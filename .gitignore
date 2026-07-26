@@ -1,0 +1,64 @@
+# ===== Bí mật & cấu hình cục bộ =====
+.env
+.env.*
+!.env.example
+CLAUDE.local.md
+
+# ===== Python / Backend =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+ENV/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.egg-info/
+dist/
+build/
+
+# ===== Node / Frontend =====
+node_modules/
+.pnpm-store/
+frontend/dist/
+frontend/.vite/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# ===== Upload người dùng (ảnh news) =====
+# Dùng `uploads/*` chứ KHÔNG phải `uploads/` — git không thể un-ignore một file
+# nếu cả thư mục cha đã bị ignore, nên .gitkeep sẽ không bao giờ được giữ lại
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# ===== Cấu hình Claude Code cục bộ (khác nhau giữa các máy) =====
+.claude/settings.local.json
+
+# ===== Docker =====
+.docker/data/
+
+# ===== IDE / OS =====
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+*.swp
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+
+# ===== Báo cáo & tài liệu tạm =====
+*.docx#
+~$*.docx
+docs/diagrams/out/*.tmp
