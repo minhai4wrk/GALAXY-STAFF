@@ -64,7 +64,7 @@ sequenceDiagram
             else [có dữ liệu lịch rảnh]
                 AS->>DB: SELECT giờ đã gán + ngày liên tiếp của từng NV
                 DB-->>AS: assigned_hours, streak
-                AS->>AS: Sort open_shifts theo ưu tiên<br/>(ca tối > chiều > sáng; cuối tuần > ngày thường)
+                AS->>AS: Sort open_shifts theo ưu tiên<br/>(ca tối trước chiều trước sáng, cuối tuần trước ngày thường)
 
                 loop Với mỗi ca trong open_shifts (tuần tự — greedy)
                     AS->>AS: Lọc NV rảnh đúng khung giờ ca (C5)

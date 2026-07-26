@@ -60,7 +60,7 @@ flowchart TD
     %% ── Validate phía Frontend ───────────────────────────
     DF1 -->|"[thiếu tiêu đề]"| FE1 --> GE
     DF1 -->|"[có tiêu đề]"| DF2
-    DF2 -->|"[ảnh quá lớn / > 3 ảnh]"| FE2 --> GE
+    DF2 -->|"[ảnh quá lớn hoặc quá 3 ảnh]"| FE2 --> GE
     DF2 -->|"[hợp lệ]"| F3 --> DB1
 
     %% ── Validate phía Backend & lưu ──────────────────────

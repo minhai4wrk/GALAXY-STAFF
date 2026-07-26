@@ -1,0 +1,463 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Galaxy Staff — Wireframe 8 màn hình chính</title>
+<style>
+  /* Lo-fi wireframe: chỉ dùng thang xám + khối hình, cố ý KHÔNG dùng màu thương hiệu
+     để người xem tập trung vào bố cục và luồng thao tác thay vì thẩm mỹ. */
+  :root {
+    --ink: #1f2328; --line: #b9bec4; --line-soft: #dcdfe3;
+    --fill: #eef0f2; --fill-2: #e2e5e8; --paper: #fff; --muted: #6b7280;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 32px 20px 80px;
+    font: 14px/1.5 "Segoe UI", system-ui, sans-serif;
+    color: var(--ink); background: #f6f7f8;
+  }
+  .page { max-width: 1180px; margin: 0 auto; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 28px; }
+  .legend { display: flex; gap: 20px; flex-wrap: wrap; font-size: 13px;
+            background: var(--paper); border: 1px solid var(--line-soft);
+            border-radius: 6px; padding: 12px 16px; margin-bottom: 32px; }
+  .legend b { font-weight: 600; }
+
+  section { margin-bottom: 40px; }
+  .cap { font-weight: 600; margin-bottom: 2px; }
+  .note { color: var(--muted); font-size: 13px; margin: 0 0 10px; }
+  .frame { background: var(--paper); border: 2px solid var(--ink); border-radius: 6px;
+           overflow: hidden; }
+  .frame.mobile { max-width: 360px; }
+
+  .bar { display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+         border-bottom: 1px solid var(--line); background: var(--fill); font-size: 13px; }
+  .bar .grow { margin-left: auto; }
+  .logo { width: 22px; height: 22px; border: 2px solid var(--ink); border-radius: 4px; }
+  .avatar { width: 24px; height: 24px; border-radius: 50%; background: var(--fill-2);
+            border: 1px solid var(--line); }
+
+  .body { display: flex; min-height: 240px; }
+  .side { width: 176px; border-right: 1px solid var(--line); padding: 12px 10px;
+          background: #fafbfc; flex-shrink: 0; }
+  .nav { padding: 7px 10px; border-radius: 4px; margin-bottom: 4px; font-size: 13px; }
+  .nav.on { background: var(--fill-2); font-weight: 600; }
+  .main { flex: 1; padding: 16px; min-width: 0; }
+
+  .btn { display: inline-block; border: 1.5px solid var(--ink); border-radius: 4px;
+         padding: 6px 12px; font-size: 13px; background: var(--paper); }
+  .btn.solid { background: var(--ink); color: #fff; }
+  .btn.sm { padding: 3px 8px; font-size: 12px; }
+  .field { border: 1px solid var(--line); border-radius: 4px; padding: 8px 10px;
+           color: var(--muted); background: var(--paper); margin-bottom: 10px; }
+  .card { border: 1px solid var(--line); border-radius: 5px; padding: 12px; background: var(--paper); }
+  .row { display: flex; gap: 10px; align-items: center; }
+  .stack { display: flex; flex-direction: column; gap: 10px; }
+  .badge { border: 1px solid var(--line); border-radius: 10px; padding: 1px 8px; font-size: 11px;
+           background: var(--fill); }
+  .h { font-weight: 600; margin-bottom: 8px; }
+  .ph { background: var(--fill); border-radius: 3px; height: 9px; }
+
+  /* Lưới lịch rảnh */
+  .grid { display: grid; grid-template-columns: 52px repeat(7, 1fr); gap: 1px;
+          background: var(--line-soft); border: 1px solid var(--line-soft); font-size: 10px; }
+  .grid div { background: var(--paper); padding: 3px 2px; text-align: center; min-height: 17px; }
+  .grid .hd { background: var(--fill); font-weight: 600; }
+  .grid .tm { background: #fafbfc; color: var(--muted); text-align: right; padding-right: 5px; }
+  .s1 { background: #d7dade !important; }   /* đã chọn */
+  .s2 { background: #eceef0 !important; }   /* preview đang kéo */
+  /* Bậc màu Overlap View: càng đậm càng nhiều người rảnh */
+  .o1 { background: #e8eaec !important; } .o2 { background: #d2d6da !important; }
+  .o3 { background: #b6bbc1 !important; } .o4 { background: #949aa1 !important; color: #fff; }
+
+  /* Roster */
+  .roster { display: grid; grid-template-columns: 110px repeat(7, 1fr); gap: 1px;
+            background: var(--line-soft); border: 1px solid var(--line-soft); font-size: 11px; }
+  .roster > div { background: var(--paper); padding: 6px 4px; min-height: 34px; }
+  .roster .hd { background: var(--fill); font-weight: 600; text-align: center; }
+  .roster .who { background: #fafbfc; font-weight: 500; }
+  .chip { border: 1px solid var(--ink); border-radius: 3px; padding: 2px 4px; font-size: 10px;
+          text-align: center; margin-bottom: 3px; }
+  .chip.open { border-style: dashed; color: var(--muted); }
+  .chip.warn { border-width: 2px; background: repeating-linear-gradient(45deg,#fff,#fff 4px,#e7e9eb 4px,#e7e9eb 8px); }
+  .chip.ex { background: var(--fill-2); border-style: dotted; }
+
+  /* Timeline ngày */
+  .tl { display: grid; grid-template-columns: 110px 1fr; gap: 1px; background: var(--line-soft);
+        border: 1px solid var(--line-soft); font-size: 11px; }
+  .tl > div { background: var(--paper); padding: 5px; min-height: 30px; }
+  .tl .who { background: #fafbfc; font-weight: 500; }
+  .tl .track { position: relative; background: repeating-linear-gradient(
+        to right, #fff 0 calc(100%/18), #fafbfc calc(100%/18) calc(100%/9)); }
+  .tl .blk { position: absolute; top: 4px; bottom: 4px; border: 1.5px solid var(--ink);
+             border-radius: 3px; background: var(--fill); font-size: 10px; text-align: center;
+             line-height: 20px; }
+
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+  @media (max-width: 900px) { .cols { grid-template-columns: 1fr; } }
+  .anno { border-left: 3px solid var(--line); padding-left: 10px; color: var(--muted);
+          font-size: 13px; margin-top: 8px; }
+  .anno b { color: var(--ink); }
+</style>
+</head>
+<body>
+<div class="page">
+
+<h1>Galaxy Staff — Wireframe các màn hình chính</h1>
+<p class="sub">Bản lo-fi phục vụ Chương 3.5 của báo cáo. Cố ý dùng thang xám để người xem tập trung vào
+bố cục và luồng thao tác. Màu sắc thật được quy định trong <code>tailwind.config.js</code>.</p>
+
+<div class="legend">
+  <span><b>Khối đặc</b> — nút hành động chính</span>
+  <span><b>Viền đứt nét</b> — ca trống (Open-shift)</span>
+  <span><b>Viền đôi + sọc</b> — cảnh báo xung đột</span>
+  <span><b>Viền chấm</b> — ca đang trao đổi</span>
+  <span><b>Nền xám đậm dần</b> — mật độ người rảnh</span>
+</div>
+
+<!-- 1. LOGIN -->
+<section>
+  <p class="cap">1. Đăng nhập <span class="badge">Chung</span></p>
+  <p class="note">FR-AUTH-01 · Bố cục giữa màn hình, một cột, dùng được cả trên điện thoại.</p>
+  <div class="frame" style="max-width:420px">
+    <div style="padding:30px 28px">
+      <div style="text-align:center;margin-bottom:20px">
+        <div class="logo" style="margin:0 auto 8px"></div>
+        <div style="font-weight:600">Galaxy Staff</div>
+        <div style="color:var(--muted);font-size:12px">Quản lý nhân sự rạp chiếu phim</div>
+      </div>
+      <div class="field">Email</div>
+      <div class="field">Mật khẩu</div>
+      <div class="btn solid" style="display:block;text-align:center">Đăng nhập</div>
+      <div style="color:var(--muted);font-size:12px;margin-top:12px;text-align:center">
+        Quên mật khẩu? Liên hệ quản lý rạp
+      </div>
+    </div>
+  </div>
+  <p class="anno"><b>Lưu ý:</b> nhân viên không tự đăng ký tài khoản nên màn hình này không có
+    liên kết "Tạo tài khoản". Nếu <code>must_change_password = true</code>, sau khi đăng nhập
+    thành công phải chuyển thẳng sang màn hình đổi mật khẩu, không vào Dashboard.</p>
+</section>
+
+<!-- 2 + 3. DASHBOARD -->
+<section>
+  <p class="cap">2 &amp; 3. Bảng điều khiển — Quản lý (desktop) và Nhân viên (điện thoại)</p>
+  <p class="note">Quản lý ưu tiên desktop vì thao tác xếp ca cần màn hình rộng; nhân viên chủ yếu dùng điện thoại.</p>
+  <div class="cols">
+    <div>
+      <div class="frame">
+        <div class="bar"><div class="logo"></div><b>Galaxy Staff</b>
+          <span class="grow"></span><span class="badge">🔔 3</span><div class="avatar"></div></div>
+        <div class="body">
+          <div class="side">
+            <div class="nav on">Bảng điều khiển</div>
+            <div class="nav">Lịch rảnh</div>
+            <div class="nav">Lịch làm việc</div>
+            <div class="nav">Trao đổi ca</div>
+            <div class="nav">Bảng tin</div>
+            <div class="nav">Nhân viên</div>
+          </div>
+          <div class="main">
+            <div class="row" style="gap:10px;margin-bottom:12px">
+              <div class="card" style="flex:1"><div style="font-size:20px;font-weight:600">8/12</div>
+                <div style="color:var(--muted);font-size:12px">Đã đăng ký lịch rảnh</div></div>
+              <div class="card" style="flex:1"><div style="font-size:20px;font-weight:600">5</div>
+                <div style="color:var(--muted);font-size:12px">Ca còn trống</div></div>
+              <div class="card" style="flex:1"><div style="font-size:20px;font-weight:600">2</div>
+                <div style="color:var(--muted);font-size:12px">Yêu cầu chờ duyệt</div></div>
+            </div>
+            <div class="card">
+              <div class="h">Cần xử lý</div>
+              <div class="stack">
+                <div class="row"><div class="ph" style="flex:1"></div><span class="btn sm">Duyệt</span></div>
+                <div class="row"><div class="ph" style="flex:1"></div><span class="btn sm">Duyệt</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="anno">Quản lý — điều hướng bằng thanh bên, thẻ số liệu đưa ngay việc cần làm lên đầu.</p>
+    </div>
+    <div>
+      <div class="frame mobile">
+        <div class="bar"><div class="logo"></div><b>Galaxy Staff</b>
+          <span class="grow"></span><span class="badge">🔔 3</span></div>
+        <div style="padding:14px">
+          <div class="card" style="margin-bottom:10px">
+            <div class="h">Ca sắp tới</div>
+            <div style="font-size:13px">Thứ 6 · 18:00 – 02:00</div>
+            <div style="color:var(--muted);font-size:12px">Làm cùng: An, Bình</div>
+          </div>
+          <div class="row" style="gap:8px;margin-bottom:10px">
+            <div class="card" style="flex:1;text-align:center">
+              <div style="font-size:18px;font-weight:600">32h</div>
+              <div style="color:var(--muted);font-size:11px">Tuần này</div></div>
+            <div class="card" style="flex:1;text-align:center">
+              <div style="font-size:18px;font-weight:600">5</div>
+              <div style="color:var(--muted);font-size:11px">Ngày đã ĐK</div></div>
+          </div>
+          <div class="btn solid" style="display:block;text-align:center;margin-bottom:8px">Đăng ký lịch rảnh</div>
+          <div class="btn" style="display:block;text-align:center">Xem lịch làm việc</div>
+        </div>
+        <div class="bar" style="border-top:1px solid var(--line);border-bottom:none;justify-content:space-around">
+          <span>Trang chủ</span><span>Lịch</span><span>Đổi ca</span><span>Tin</span>
+        </div>
+      </div>
+      <p class="anno">Nhân viên — thanh điều hướng dưới đáy, ưu tiên trả lời ngay câu hỏi
+        "ca tiếp theo của tôi là khi nào".</p>
+    </div>
+  </div>
+</section>
+
+<!-- 4. AVAILABILITY GRID -->
+<section>
+  <p class="cap">4. Đăng ký lịch rảnh <span class="badge">Chung</span></p>
+  <p class="note">FR-AVAIL-02 → 07 · Lưới 7 ngày × 36 ô 30 phút, kéo-thả để tô.
+    Chi tiết tương tác: <code>docs/ux-availability-grid.md</code></p>
+  <div class="frame">
+    <div class="bar"><b>Đăng ký lịch rảnh</b>
+      <span class="badge">Tuần 07/08 – 13/08</span>
+      <span class="grow"></span>
+      <span class="badge">⏳ Còn 2 ngày 5 giờ</span>
+      <span class="btn sm">Xoá hết</span><span class="btn sm solid">Lưu</span></div>
+    <div style="padding:12px">
+      <div class="row" style="margin-bottom:10px;font-size:12px">
+        <span style="color:var(--muted)">Mẫu ca:</span>
+        <span class="btn sm">Sáng</span><span class="btn sm">Chiều</span>
+        <span class="btn sm">Tối</span><span class="btn sm">Cả ngày</span>
+        <span class="grow"></span>
+        <span class="badge">Đã chọn 5/7 ngày</span>
+      </div>
+      <div class="grid">
+        <div class="hd"></div><div class="hd">T6<br>07/08</div><div class="hd">T7</div><div class="hd">CN</div>
+        <div class="hd">T2</div><div class="hd">T3</div><div class="hd">T4</div><div class="hd">T5</div>
+        <div class="tm">08:00</div><div class="s1"></div><div class="s1"></div><div></div><div class="s1"></div><div></div><div class="s1"></div><div></div>
+        <div class="tm">09:00</div><div class="s1"></div><div class="s1"></div><div></div><div class="s1"></div><div></div><div class="s1"></div><div></div>
+        <div class="tm">10:00</div><div class="s1"></div><div class="s1"></div><div></div><div class="s2"></div><div></div><div class="s1"></div><div></div>
+        <div class="tm">13:00</div><div></div><div class="s1"></div><div class="s1"></div><div class="s2"></div><div></div><div></div><div class="s1"></div>
+        <div class="tm">18:00</div><div class="s1"></div><div class="s1"></div><div class="s1"></div><div class="s2"></div><div class="s1"></div><div></div><div class="s1"></div>
+        <div class="tm">21:00</div><div class="s1"></div><div class="s1"></div><div class="s1"></div><div></div><div class="s1"></div><div></div><div class="s1"></div>
+        <div class="tm">00:00</div><div class="s1"></div><div class="s1"></div><div></div><div></div><div class="s1"></div><div></div><div></div>
+        <div class="tm">02:00</div><div class="s1"></div><div class="s1"></div><div></div><div></div><div class="s1"></div><div></div><div></div>
+      </div>
+      <div style="color:var(--muted);font-size:12px;margin-top:8px">
+        Ô xám đậm = đã chọn · Ô xám nhạt = đang kéo (chưa chốt)
+      </div>
+    </div>
+  </div>
+  <p class="anno"><b>Ba điểm dễ làm sai:</b> hàng cuối là <b>01:30–02:00</b> chứ không phải 02:30 —
+    rạp đóng cửa lúc 2 giờ sáng. Đếm "5/7 ngày" tính theo <b>ngày có ít nhất một ô</b>, không theo số giờ.
+    Nút Lưu khi dưới 5 ngày sẽ mở hộp thoại nhập lý do nhưng <b>vẫn cho lưu</b>.</p>
+</section>
+
+<!-- 5. OVERLAP VIEW -->
+<section>
+  <p class="cap">5. Tổng hợp lịch rảnh toàn team <span class="badge">Chung</span></p>
+  <p class="note">FR-AVAIL-01 · Ô càng đậm càng nhiều người rảnh. Bấm vào ô để xem danh sách cụ thể.</p>
+  <div class="frame">
+    <div class="bar"><b>Tổng hợp lịch rảnh</b><span class="badge">Tuần 07/08 – 13/08</span>
+      <span class="grow"></span><span class="btn sm">‹ Tuần trước</span><span class="btn sm">Tuần sau ›</span></div>
+    <div style="padding:12px">
+      <div class="grid">
+        <div class="hd"></div><div class="hd">T6</div><div class="hd">T7</div><div class="hd">CN</div>
+        <div class="hd">T2</div><div class="hd">T3</div><div class="hd">T4</div><div class="hd">T5</div>
+        <div class="tm">08:00</div><div class="o2">4</div><div class="o3">7</div><div class="o1">2</div><div class="o2">5</div><div class="o1">3</div><div class="o2">4</div><div class="o1">2</div>
+        <div class="tm">13:00</div><div class="o3">6</div><div class="o4">9</div><div class="o2">4</div><div class="o3">6</div><div class="o2">5</div><div class="o2">4</div><div class="o1">3</div>
+        <div class="tm">18:00</div><div class="o4">10</div><div class="o4">11</div><div class="o3">7</div><div class="o3">6</div><div class="o3">7</div><div class="o2">5</div><div class="o2">4</div>
+        <div class="tm">21:00</div><div class="o4">9</div><div class="o4">10</div><div class="o3">6</div><div class="o2">5</div><div class="o3">6</div><div class="o2">4</div><div class="o1">3</div>
+        <div class="tm">00:00</div><div class="o2">5</div><div class="o3">6</div><div class="o1">2</div><div class="o1">3</div><div class="o2">4</div><div class="o1">2</div><div class="o1">2</div>
+      </div>
+      <div class="row" style="margin-top:12px;gap:16px;align-items:flex-start">
+        <div class="card" style="flex:1">
+          <div class="h">Thứ 7 · 18:00 – 18:30 — 11 người rảnh</div>
+          <div style="font-size:12px;color:var(--muted)">Rảnh: An, Bình, Cẩm, Dũng, Em, Phong, Giang, Huy, Kim, Long, Mai</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px">Bận: Nam</div>
+        </div>
+        <div class="card" style="width:230px">
+          <div class="h">Tình trạng đăng ký</div>
+          <div style="font-size:12px">✔ Đủ 5 ngày — 8 người</div>
+          <div style="font-size:12px">⚠ Dưới 5 ngày — 2 người</div>
+          <div style="font-size:12px">✖ Chưa đăng ký — 2 người</div>
+          <div class="btn sm" style="margin-top:8px">Nhắc người chưa đăng ký</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 6. ROSTER TUẦN -->
+<section>
+  <p class="cap">6. Lịch làm việc — xem theo tuần <span class="badge">Chung</span></p>
+  <p class="note">FR-ROSTER-02 · Hàng đầu tiên luôn là ca trống. Quản lý bấm vào ô để mở form tạo/sửa ca.</p>
+  <div class="frame">
+    <div class="bar"><b>Lịch làm việc</b><span class="badge">Tuần 07/08 – 13/08</span>
+      <span class="badge">Nháp</span><span class="grow"></span>
+      <span class="btn sm">Tuần</span><span class="btn sm">Ngày</span>
+      <span class="btn sm">Xếp ca tự động</span><span class="btn sm solid">Công bố</span></div>
+    <div style="padding:12px">
+      <div class="roster">
+        <div class="hd"></div><div class="hd">T6 07/08</div><div class="hd">T7 08/08</div><div class="hd">CN 09/08</div>
+        <div class="hd">T2 10/08</div><div class="hd">T3 11/08</div><div class="hd">T4 12/08</div><div class="hd">T5 13/08</div>
+
+        <div class="who" style="font-weight:600">Ca trống</div>
+        <div><div class="chip open">08:00–13:00</div></div><div></div>
+        <div><div class="chip open">18:00–02:00</div></div><div></div><div></div>
+        <div><div class="chip open">13:00–18:00</div></div><div></div>
+
+        <div class="who">Nguyễn Văn An</div>
+        <div><div class="chip">18:00–02:00</div></div><div><div class="chip">18:00–02:00</div></div>
+        <div></div><div><div class="chip">08:00–13:00</div></div><div></div>
+        <div><div class="chip">13:00–18:00</div></div><div></div>
+
+        <div class="who">Trần Thanh Bình</div>
+        <div><div class="chip">13:00–18:00</div></div><div></div>
+        <div><div class="chip warn">08:00–13:00</div></div><div></div>
+        <div><div class="chip">18:00–02:00</div></div><div></div><div><div class="chip">08:00–13:00</div></div>
+
+        <div class="who">Lê Thị Cẩm</div>
+        <div></div><div><div class="chip">08:00–13:00</div></div>
+        <div><div class="chip">13:00–18:00</div></div><div><div class="chip ex">18:00–02:00</div></div>
+        <div></div><div></div><div><div class="chip">18:00–02:00</div></div>
+      </div>
+      <div style="color:var(--muted);font-size:12px;margin-top:8px">
+        Viền đứt = ca trống · Viền đôi có sọc = vi phạm ràng buộc · Viền chấm = đang trao đổi
+      </div>
+    </div>
+  </div>
+  <p class="anno"><b>Ca trống là hàng riêng, không phải một màu trạng thái</b> — vì ca trống và
+    lịch đã công bố có thể cùng đúng một lúc: nhân viên chỉ đăng ký nhận ca trống sau khi lịch đã công bố.</p>
+</section>
+
+<!-- 7. ROSTER NGÀY -->
+<section>
+  <p class="cap">7. Lịch làm việc — xem theo ngày <span class="badge">Chung</span></p>
+  <p class="note">FR-ROSTER-01 · Trục ngang là thời gian 08:00 → 02:00, mỗi ca là một thanh.</p>
+  <div class="frame">
+    <div class="bar"><b>Thứ 6, 07/08/2026</b><span class="grow"></span>
+      <span class="btn sm">‹</span><span class="btn sm">›</span><span class="btn sm">+ Thêm ca</span></div>
+    <div style="padding:12px">
+      <div style="display:grid;grid-template-columns:110px 1fr;font-size:10px;color:var(--muted);margin-bottom:2px">
+        <div></div>
+        <div style="display:flex;justify-content:space-between"><span>08</span><span>11</span><span>14</span>
+          <span>17</span><span>20</span><span>23</span><span>02</span></div>
+      </div>
+      <div class="tl">
+        <div class="who" style="font-weight:600">Ca trống</div>
+        <div class="track"><div class="blk" style="left:0%;width:28%;border-style:dashed">08:00–13:00</div></div>
+        <div class="who">Nguyễn Văn An</div>
+        <div class="track"><div class="blk" style="left:56%;width:44%">18:00–02:00</div></div>
+        <div class="who">Trần Thanh Bình</div>
+        <div class="track"><div class="blk" style="left:28%;width:28%">13:00–18:00</div></div>
+        <div class="who">Lê Thị Cẩm</div>
+        <div class="track"><div class="blk" style="left:0%;width:28%">08:00–13:00</div></div>
+      </div>
+    </div>
+  </div>
+  <p class="anno">Trục thời gian kéo tới <b>02:00 hôm sau</b> nên ca tối nằm gọn trong một thanh liền
+    mạch, không bị cắt làm đôi ở mốc nửa đêm.</p>
+</section>
+
+<!-- 8. EXCHANGE BOARD -->
+<section>
+  <p class="cap">8. Bảng trao đổi ca <span class="badge">Chung</span></p>
+  <p class="note">FR-EXCHANGE-06 · Bố cục giống lịch tuần nhưng ca thường làm mờ, chỉ ca đang trao đổi nổi bật.</p>
+  <div class="frame">
+    <div class="bar"><b>Trao đổi ca</b><span class="badge">Tuần 07/08 – 13/08</span>
+      <span class="grow"></span><span class="btn sm">Tất cả</span><span class="btn sm">Của tôi</span></div>
+    <div style="padding:12px">
+      <div class="roster" style="opacity:.55">
+        <div class="hd"></div><div class="hd">T6</div><div class="hd">T7</div><div class="hd">CN</div>
+        <div class="hd">T2</div><div class="hd">T3</div><div class="hd">T4</div><div class="hd">T5</div>
+        <div class="who">Nguyễn Văn An</div>
+        <div><div class="chip">18:00–02:00</div></div><div></div><div></div>
+        <div><div class="chip">08:00–13:00</div></div><div></div><div></div><div></div>
+      </div>
+      <div class="roster" style="margin-top:1px">
+        <div class="who" style="font-weight:600">Đang trao đổi</div>
+        <div></div>
+        <div><div class="chip ex" style="border-width:2px">Cẩm · 13:00–18:00</div></div>
+        <div></div>
+        <div><div class="chip ex" style="border-style:dashed;border-width:2px">Long · 18:00–02:00<br><span style="font-size:9px">Chờ duyệt</span></div></div>
+        <div></div><div></div><div></div>
+      </div>
+      <div class="card" style="margin-top:12px;max-width:440px">
+        <div class="h">Thứ 7 · 13:00 – 18:00 — Lê Thị Cẩm</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px">
+          "Mình bận việc gia đình, ai nhận giúp với ạ"</div>
+        <div style="border:1px solid var(--line);border-radius:4px;padding:8px;font-size:12px;margin-bottom:8px;
+                    background:repeating-linear-gradient(45deg,#fff,#fff 5px,#f0f1f2 5px,#f0f1f2 10px)">
+          ⚠ Ca này trùng giờ với ca 13:00–18:00 của bạn
+        </div>
+        <div class="row"><span class="btn sm solid">Nhận ca</span><span class="btn sm">Đóng</span></div>
+      </div>
+    </div>
+  </div>
+  <p class="anno">Cảnh báo trùng giờ hiện <b>trước khi</b> bấm nhận. Nhân viên vẫn nhận được, nhưng
+    hệ thống đánh dấu để quản lý nhìn thấy lúc duyệt.</p>
+</section>
+
+<!-- 9. NEWS + 10. NOTIFICATION -->
+<section>
+  <p class="cap">9 &amp; 10. Bảng tin nội bộ và bảng thông báo</p>
+  <p class="note">FR-NEWS-02, FR-NEWS-06, FR-NOTIF-01 · Bảng thông báo là menu thả xuống từ chuông, không phải trang riêng.</p>
+  <div class="cols">
+    <div>
+      <div class="frame">
+        <div class="bar"><b>Bảng tin</b><span class="grow"></span><span class="btn sm solid">+ Tạo bài</span></div>
+        <div style="padding:12px" class="stack">
+          <div class="card">
+            <div class="row" style="margin-bottom:6px"><b style="font-size:13px">Lịch chiếu tuần mới</b>
+              <span class="badge">Mới</span></div>
+            <div class="ph" style="margin-bottom:4px"></div>
+            <div class="ph" style="width:70%;margin-bottom:8px"></div>
+            <div class="row" style="gap:6px;margin-bottom:8px">
+              <div style="width:52px;height:38px;background:var(--fill);border:1px solid var(--line);border-radius:3px"></div>
+              <div style="width:52px;height:38px;background:var(--fill);border:1px solid var(--line);border-radius:3px"></div>
+            </div>
+            <div style="color:var(--muted);font-size:12px">Quản lý · 2 giờ trước · 👁 8/12 đã đọc</div>
+          </div>
+          <div class="card" style="opacity:.75">
+            <b style="font-size:13px">Nhắc đăng ký lịch rảnh</b>
+            <div class="ph" style="margin:6px 0"></div>
+            <div style="color:var(--muted);font-size:12px">Quản lý · Hôm qua · 👁 12/12 đã đọc</div>
+          </div>
+        </div>
+      </div>
+      <p class="anno">Chỉ tính là đã đọc khi nhân viên <b>mở bài</b>, không tính lúc lướt qua trên danh sách.</p>
+    </div>
+    <div>
+      <div class="frame" style="max-width:340px">
+        <div class="bar"><b>Thông báo</b><span class="grow"></span>
+          <span class="btn sm">Đánh dấu đã đọc hết</span></div>
+        <div style="padding:10px" class="stack">
+          <div class="card" style="border-left:4px solid var(--ink)">
+            <div style="font-size:12px">Lịch làm việc tuần 07/08 đã được công bố</div>
+            <div style="color:var(--muted);font-size:11px;margin-top:3px">5 phút trước</div>
+          </div>
+          <div class="card" style="border-left:4px solid var(--ink)">
+            <div style="font-size:12px">Nguyễn Văn An đã nhận ca ngày 15/08 (18:00–02:00). Chờ duyệt.</div>
+            <div style="color:var(--muted);font-size:11px;margin-top:3px">1 giờ trước</div>
+          </div>
+          <div class="card" style="opacity:.6">
+            <div style="font-size:12px">Quản lý vừa đăng thông báo mới: Lịch chiếu tuần mới</div>
+            <div style="color:var(--muted);font-size:11px;margin-top:3px">2 giờ trước</div>
+          </div>
+        </div>
+      </div>
+      <p class="anno">Bấm vào thông báo sẽ mở đúng ngữ cảnh. Riêng loại "lịch đã công bố" không trỏ tới
+        một ca cụ thể nào mà mở Roster <b>đúng tuần</b> — vì vậy cần thêm trường
+        <code>reference_date</code> bên cạnh <code>reference_id</code>.</p>
+    </div>
+  </div>
+</section>
+
+<p style="color:var(--muted);font-size:13px;border-top:1px solid var(--line-soft);padding-top:16px">
+  Cách chụp cho báo cáo: mở tệp này bằng trình duyệt, chụp từng khối màn hình rồi chèn vào mục 3.5.
+  Sửa nội dung bằng cách chỉnh trực tiếp <code>docs/wireframes/index.html</code>.
+</p>
+
+</div>
+</body>
+</html>

@@ -41,7 +41,7 @@ flowchart TD
         DF3{"Nhận phản hồi\ntrong 30s?"}
         FTO["Toast:\n'Mất nhiều thời gian hơn dự kiến. Thử lại.'"]
         FERR["Toast lỗi\n(từ backend)"]
-        F6["Ẩn spinner; hiển thị draft\n(viền nét đứt, badge 'Auto')"]
+        F6["Ẩn spinner, hiển thị draft\n(viền nét đứt, badge 'Auto')"]
         F7["Tổng kết:\n'Đã gán X/Y ca. Z ca không đủ người.'"]
         FRS["Xóa ca auto (giữ ca gán tay)\n→ ca quay về Open-shift"]
     end
@@ -52,7 +52,7 @@ flowchart TD
         DB1{"Có NV đăng ký\nlịch rảnh?"}
         BERR["Trả 400:\n'Chưa có NV đăng ký lịch rảnh'"]
         B3["Tính giờ đã gán\n+ ngày liên tiếp (từ ca hiện có)"]
-        B4["Sort Open-shifts theo ưu tiên\n(ca tối>chiều>sáng; cuối tuần>thường)"]
+        B4["Sort Open-shifts theo ưu tiên\n(tối trước chiều trước sáng; cuối tuần trước ngày thường)"]
         DB2{"Còn ca\nchưa xét?"}
         B5["Lấy ca kế tiếp"]
         B6["Lọc Staff rảnh đúng\nkhung giờ ca (C5)"]

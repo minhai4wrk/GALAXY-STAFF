@@ -93,17 +93,28 @@ Giữ lại trong tài liệu để đối chiếu khi viết Chương 3 và khi
 
 > Cả hai đợt cho thấy cùng một bài học: **đọc xuôi tài liệu rồi đoán xem thiếu gì thì không bao giờ tìm ra**. Phải đi ngược từ yêu cầu về thiết kế.
 
-### ❗ Nợ còn lại của giai đoạn thiết kế → dồn vào Sprint 1
+### ✅ Nợ giai đoạn thiết kế — đã trả xong ngày 27/07/2026
 
-| ID | Việc còn nợ | Vì sao chưa xong |
-|----|-------------|------------------|
-| S0-08 | Wireframe các màn hình chính | Chưa vẽ. Chương 3.5 cần 3–4 trang, không có wireframe thì không viết được |
-| S0-09 | Đặc tả tương tác drag-to-paint (Availability) | Chưa viết. Bỏ qua bước này thì lúc code S3-05 sẽ mò |
-| S0-10b | README.md | Chưa có. Còn là yêu cầu bắt buộc **NFR-DEPLOY-05** |
-| S0-12b | `core/security.py` + `core/deps.py` | Scaffold backend mới có `config.py` + `database.py` |
-| S0-13 | Scaffold Frontend | Thư mục `frontend/` chưa tồn tại |
-| S0-14 | SQLAlchemy models + Alembic + seed | `models/` còn rỗng, chưa có `alembic/` |
-| S0-17 | Export PNG/SVG toàn bộ diagram | `docs/diagrams/out/` chưa tồn tại — cần cho báo cáo |
+| ID | Việc | Sản phẩm |
+|----|------|----------|
+| S0-08 | Wireframe các màn hình chính | `docs/wireframes/index.html` — 10 màn hình lo-fi, mở bằng trình duyệt là chụp được cho mục 3.5 |
+| S0-09 | Đặc tả tương tác drag-to-paint | `docs/ux-availability-grid.md` — máy trạng thái, 6 quy tắc chốt, xử lý cảm ứng, checklist nghiệm thu |
+| S0-10b | README.md | Đủ mục theo NFR-DEPLOY-05: cài đặt 3 bước, tài khoản mẫu, 3 quy ước dễ hiểu sai, giới hạn V1 |
+| S0-12b | `core/security.py` + `core/deps.py` | bcrypt cost 12, JWT access/refresh tách loại, `get_current_user` / `get_current_manager` |
+| S0-13 | Scaffold Frontend | Vite + React 18 + TS **strict** + Tailwind + shadcn/ui + Zustand + TanStack Query, build sạch |
+| S0-14 | Models + Alembic + seed | 11 model, migration `0001_initial`, seed 1 Manager + 12 Staff + 42 ca + 3 bài tin |
+| S0-17 | Export PNG/SVG diagram | `docs/diagrams/export.sh` — chạy một lệnh ra toàn bộ ảnh vào `docs/diagrams/out/` |
+
+**Phát sinh thêm ngoài kế hoạch**: 17 test kiểm chứng ràng buộc cấp cơ sở dữ liệu
+(`backend/app/tests/test_schema_constraints.py`) — chứng minh bằng máy rằng ca qua nửa đêm được chấp nhận,
+khung giờ chồng nhau bị chặn, và mỗi ca chỉ có một yêu cầu trao đổi hoạt động.
+
+> 🔴 **Lỗi bắt được khi hiện thực hóa**: hàm `op_minute()` chép từ `docs/erd.md` mục 5.3 bị sai —
+> nhánh sau nửa đêm dùng `t + INTERVAL '24 hours'`, mà kiểu `TIME` của PostgreSQL **cuộn vòng modulo 24 giờ**
+> nên phép cộng vô tác dụng. Kết quả: `op_minute('02:00')` trả `-360` thay vì `1080`, khiến ràng buộc
+> `ck_avail_end` **từ chối đúng ca tối 18h→2h** mà cả thiết kế sinh ra để phục vụ.
+> Đã sửa ở cả migration lẫn `erd.md`, và khóa lại bằng test tham số hóa 6 mốc giờ.
+> Đây là lần thứ hai cùng một chỗ gây lỗi — lần đầu là ràng buộc `end_time > start_time`, lần này là chính bản vá cho nó.
 
 ---
 

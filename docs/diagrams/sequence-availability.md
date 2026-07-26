@@ -68,7 +68,7 @@ sequenceDiagram
         PG->>PG: Gom slot liền kề thành khoảng (start_time, end_time)
         PG->>Q: POST /api/availabilities<br/>{ week_start, slots[], reason? }
         Q->>RT: HTTP request
-        RT->>RT: Pydantic validate: day_of_week 0-6,<br/>end_time > start_time, week_start là Thứ 6
+        RT->>RT: Pydantic validate: day_of_week 0-6,<br/>end_time sau start_time, week_start là Thứ 6
         RT->>SV: batch_upsert(user_id, payload)
         SV->>SV: Kiểm tra lại deadline phía server (BR-AV-07)
 
