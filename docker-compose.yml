@@ -26,7 +26,7 @@ services:
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - pgdata16:/var/lib/postgresql/data
       # Script khởi tạo: tạo DB test + bật extension btree_gist (ERD mục 5.4)
       - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
@@ -124,7 +124,10 @@ services:
       - galaxy_net
 
 volumes:
-  postgres_data:
+  # Đặt tên kèm số phiên bản: một dự án Galaxy Staff cũ (postgres 15, tháng 5/2026) từng
+  # dùng volume `galaxy_staff_postgres_data`. Trùng tên thì postgres 16 sẽ mount phải thư
+  # mục dữ liệu của postgres 15 và chết với lỗi "database files are incompatible with server".
+  pgdata16:
   backend_uploads:
 
 networks:
