@@ -5,9 +5,14 @@
 | Hạng mục | Thông tin |
 |----------|-----------|
 | Loại dự án | Đồ án cá nhân cấp đại học |
-| Thời gian | 4 tháng / 17 tuần (01/06 – 27/09/2026) |
 | Số người thực hiện | 1 |
-| Đầu ra | Hệ thống demo + Báo cáo ≥ 50 trang |
+| **Hạn nộp** | **05/10/2026 (Thứ 2)** |
+| **Thời gian thi công còn lại** | **10 tuần — 27/07/2026 → 04/10/2026** |
+| Giai đoạn đã xong | Phân tích & Thiết kế (kết thúc 26/07/2026) |
+| Đầu ra | Hệ thống demo chạy online + Báo cáo ≥ 50 trang |
+| Phiên bản kế hoạch | **2.0 — tái lập mốc ngày 26/07/2026** (xem [Phần F](#phần-f-nhật-ký-thay-đổi-kế-hoạch)) |
+
+> ⚠️ **Bản 2.0 thay thế hoàn toàn bản 1.0.** Bản cũ đặt mốc 01/06 → 27/09 và chứa ERD 8 bảng + danh sách ~32 endpoint đã bị bác bỏ trong đợt audit thiết kế. Mọi số liệu trong tài liệu này đã đối chiếu với `docs/erd.md` v2.0 và `docs/api/openapi.yaml`.
 
 ---
 
@@ -15,615 +20,548 @@
 
 ### 1. Phương pháp phát triển: Agile cá nhân (Personal Scrum)
 
-Do dự án chỉ có 1 người, áp dụng mô hình **Agile cá nhân** kết hợp **Incremental Development**:
+- **Sprint**: 7 sprint trong 10 tuần thi công. Sprint dài 1–2 tuần tùy khối lượng.
+- **Daily log**: ghi nhật ký công việc mỗi ngày vào `CLAUDE.local.md` (thay cho daily standup).
+- **Sprint Review**: cuối mỗi sprint tự đánh giá, demo nội bộ, **chụp màn hình ngay** cho báo cáo.
+- **Definition of Done**: mỗi sprint có tiêu chí nghiệm thu riêng (xem từng sprint ở Phần B). Không tự cho phép "gần xong" — hoặc đạt hết tiêu chí, hoặc ghi vào nợ kỹ thuật của sprint sau.
+- **Kanban board**: Notion hoặc GitHub Projects, trạng thái Backlog → In Progress → Review → Done.
+- **Version Control**: Git Flow rút gọn — `main` (ổn định), `develop` (tích hợp), `feature/*` · `fix/*` · `docs/*`. Chi tiết ở [docs/git-workflow.md](../docs/git-workflow.md).
 
-- **Sprint**: 7 sprint trong 17 tuần. 3 sprint trọng điểm (Thiết kế, Availability, Roster) kéo dài **3 tuần**; 4 sprint còn lại **2 tuần**.
-- **Daily log**: Ghi nhật ký công việc mỗi ngày (thay cho daily standup).
-- **Sprint Review**: Cuối mỗi sprint tự đánh giá, demo nội bộ, chụp ảnh màn hình cho báo cáo.
-- **Kanban board**: Dùng GitHub Projects hoặc Notion để quản lý task theo trạng thái: Backlog → In Progress → Review → Done.
-- **Version Control**: Git Flow đơn giản hóa — nhánh `main` (production), `develop` (phát triển), `feature/*` cho từng tính năng.
-
-### 2. Chiến lược ưu tiên (MoSCoW) — Điều chỉnh cho 1 người
-
-Vì chỉ có 1 người, cần phân loại rõ tính năng theo mức ưu tiên:
+### 2. Chiến lược ưu tiên (MoSCoW) — bản đã chốt sau khi tái lập mốc
 
 | Mức | Tính năng | Ghi chú |
 |-----|-----------|---------|
-| **Must Have** | Auth (JWT+RBAC), **Availability đầy đủ** (grid kéo-thả + Overlap view + Template-shift + deadline + min-5 ngày), Roster (xem ngày/tuần + xếp ca thủ công kéo-thả), Auto-Scheduling (rules-based), News Feed, Notification in-app (WebSocket) | Bắt buộc hoàn thành |
-| **Should Have** | Shift Exchange (pass ca, nhận ca, duyệt, concurrency), Responsive **mobile-web** cho Staff, Cảnh báo xung đột real-time, Stress test | Cố gắng hoàn thành |
-| **Could Have** | Sequence diagram chi tiết, hiệu ứng UX nâng cao, polish loading/empty states | Làm nếu còn thời gian |
-| **Won't Have (→ Version 2)** | **Native mobile app (Flutter)**, **Push notification FCM**, **Swap ca 2 chiều (UC-14)**, Multi-location UI, Payroll API | Bỏ qua, chỉ ghi nhận trong báo cáo |
+| **Must Have** | Auth (JWT + RBAC), **Availability đầy đủ** (grid kéo-thả + Overlap view + Template-shift + deadline + min-5 ngày), Roster (xem ngày/tuần + xếp ca **bằng form/modal**), Auto-Scheduling (greedy), News Feed, Notification in-app (WebSocket) | Bắt buộc hoàn thành |
+| **Should Have** | Shift Exchange (pass / nhận / duyệt + concurrency), Responsive mobile-web cho Staff, Cảnh báo xung đột khi xếp ca, Stress test | Đã cam kết giữ trong bản 2.0 |
+| **Could Have** | Hiệu ứng UX nâng cao, polish loading/empty state, countdown deadline real-time (FR-AVAIL-13) | Làm nếu còn thời gian |
+| **Won't Have (→ V2)** | **Kéo-thả xếp ca ở Roster** *(cắt ngày 26/07)*, Native mobile app (Flutter), Push notification FCM, **Swap ca 2 chiều (UC-14)**, Multi-location UI, Payroll API, bảng `audit_logs`, bảng `refresh_tokens` | Ghi vào mục "Hạn chế" và "Hướng phát triển" của báo cáo |
+
+> **Vì sao cắt kéo-thả ở Roster mà giữ ở Availability**: drag-to-paint trên lưới Availability chính là điểm nhấn kiểu When2Meet — thứ phân biệt hệ thống này với một cái form thường, nên không hạ cấp. Còn ở Roster, thao tác kéo khối ca và kéo đổi người chỉ là *tiện nghi*: click ô ngày → mở form vẫn cho ra đúng kết quả nghiệp vụ. Đổi lại tiết kiệm khoảng 1 tuần cho phần khó thật sự là thuật toán auto-schedule.
 
 ### 3. Chiến lược phát triển kỹ thuật
 
-- **Vertical slice theo module**: làm trọn từng module (backend → test Swagger → frontend) trong mỗi sprint thay vì dồn toàn bộ backend rồi mới frontend. Sprint 1 cố tình làm tính năng "nhẹ" (Auth + News Feed) trước để thông pipeline & deploy sớm, rồi mới vào phần khó (Availability, Roster).
-- **Database-first**: Thiết kế schema PostgreSQL kỹ lưỡng ngay từ đầu, dùng Alembic migration.
-- **Component-driven Frontend**: Dùng shadcn/ui có sẵn, không tự code component từ đầu.
-- **Docker từ ngày đầu**: Setup docker-compose ngay Sprint 0 để đảm bảo môi trường nhất quán.
+- **Vertical slice theo module**: làm trọn từng module (backend → test qua Swagger → frontend) thay vì dồn hết backend rồi mới frontend. Sprint 2 cố tình làm nhóm tính năng "nhẹ" (Auth + News + Notification) trước để **thông pipeline và deploy sớm**, rồi mới vào phần khó.
+- **Spec-first**: `docs/api/openapi.yaml` là hợp đồng. Mỗi `components.schemas.X` ứng với một class trong `backend/app/schemas/`. Giữ nguyên tên trường để `/docs` do FastAPI sinh ra trùng khớp file spec — lệch tên là dấu hiệu code đi chệch thiết kế.
+- **Database-first**: schema đã chốt ở ERD v2.0, dùng Alembic migration ngay từ Sprint 1.
+- **Component-driven Frontend**: dùng shadcn/ui có sẵn, không tự code component từ đầu.
+- **Docker từ đầu**: môi trường nhất quán giữa dev và Render.
 
 ---
 
-## PHẦN B: CÁC BƯỚC TRIỂN KHAI CHI TIẾT
+## PHẦN B: LỘ TRÌNH 10 TUẦN
 
-> Lịch theo tuần (deadline = cuối tuần). CN mỗi tuần là buffer. Báo cáo viết song song theo sprint.
+> Tuần chạy từ **Thứ 2 đến Chủ nhật**. Chủ nhật là buffer, đừng tiêu trước.
+> Báo cáo viết **song song từng sprint** — đây là điều kiện sống còn của bản kế hoạch nén này.
 
----
+### Bảng mốc tổng thể
 
-### SPRINT 0 — PHÂN TÍCH, THIẾT KẾ & SETUP (Tuần 1–3)
-
-**Mục tiêu**: Hoàn thành toàn bộ tài liệu thiết kế (full scope), setup môi trường, scaffold, prototype shell. Viết Chương 2 song song.
-
-#### Tuần 1: Phân tích & thiết kế lõi
-
-| ID | Công việc | Đầu ra |
-|----|-----------|--------|
-| S0-01 | Phân tích yêu cầu, viết đặc tả 14 Use Case cho 4 module | Tài liệu Use Case (Ch3) |
-| S0-02 | Vẽ Use Case Diagram (tổng quan + từng module) | File UML |
-| S0-03 | Vẽ Activity Diagram (5 luồng chính) | File UML |
-| S0-04 | Vẽ Sequence Diagram cho luồng phức tạp (pass ca concurrency, auto-schedule) | File UML *(có thể cắt nếu trễ)* |
-| S0-05 | Thiết kế ERD chi tiết: quan hệ, constraint, index, status enum | ERD + SQL schema |
-
-**Chi tiết Use Case cần phân tích:**
-
-1. UC-01: Đăng nhập/Đăng xuất (Staff, Manager)
-2. UC-02: Đăng ký lịch rảnh (Staff)
-3. UC-03: Xem tổng hợp lịch rảnh (Manager)
-4. UC-04: Xếp ca thủ công (Manager)
-5. UC-05: Auto-scheduling (Manager)
-6. UC-06: Publish lịch làm (Manager)
-7. UC-07: Xem lịch làm + Apply open-shift (Staff)
-8. UC-08: Pass ca (Staff)
-9. UC-09: Nhận ca (Staff)
-10. UC-10: Duyệt trao đổi ca (Manager)
-11. UC-11: Tạo thông báo (Manager)
-12. UC-12: Xem thông báo (Staff)
-13. UC-13: Quản lý nhân viên (Manager)
-14. UC-14: Swap ca — đổi ca 2 chiều *(Version 2)*
-
-**Chi tiết ERD — Các bảng cần thiết:**
-
-```
-users (id, email, password_hash, full_name, role, location_id, is_active, created_at)
-locations (id, name, address)
-availabilities (id, user_id FK, week_start, day_of_week, start_time, end_time, status)
-shifts (id, location_id FK, date, start_time, end_time, assigned_user_id FK, status, created_by FK)
-shift_exchanges (id, shift_id FK, from_user_id FK, to_user_id FK, message, status [open/pending/approved/rejected], approved_by FK, created_at)
-news_posts (id, author_id FK, title, content, image_url, created_at)
-news_reads (id, post_id FK, user_id FK, read_at)
-notifications (id, user_id FK, type, reference_id, message, is_read, created_at)
-```
-
-#### Tuần 2: Đặc tả API, wireframe & khởi tạo repo
-
-| ID | Công việc | Đầu ra |
-|----|-----------|--------|
-| S0-06 | Thiết kế API Specification (OpenAPI 3.0) cho ~32 endpoint | File openapi.yaml |
-| S0-07 | Viết tài liệu SRS (chức năng + phi chức năng) | SRS document |
-| S0-08 | Vẽ wireframe 8 màn hình chính (Figma/Excalidraw) | Wireframe file |
-| S0-09 | Thiết kế chi tiết tương tác drag-drop (Availability + Roster): state, ô 30p, logic template-shift | Tài liệu thiết kế UX |
-| S0-10 | Tạo GitHub repo, Git Flow, README, .gitignore, Conventional Commits | Repo GitHub |
-
-**Chi tiết API Endpoints cần thiết kế:**
-
-```
-# Auth
-POST   /api/auth/login
-POST   /api/auth/register (Manager only)
-GET    /api/auth/me
-
-# Users
-GET    /api/users
-GET    /api/users/{id}
-PUT    /api/users/{id}
-PATCH  /api/users/{id}/status
-
-# Availability
-GET    /api/availabilities?week_start=YYYY-MM-DD
-POST   /api/availabilities (batch upsert)
-GET    /api/availabilities/overview?week_start=YYYY-MM-DD  (Manager: overlap view)
-
-# Shifts / Roster
-GET    /api/shifts?date=YYYY-MM-DD&view=day|week
-POST   /api/shifts
-PUT    /api/shifts/{id}
-DELETE /api/shifts/{id}
-POST   /api/shifts/auto-schedule  (Manager)
-POST   /api/shifts/publish        (Manager)
-POST   /api/shifts/{id}/apply     (Staff: apply open-shift)
-
-# Shift Exchange
-GET    /api/exchanges
-POST   /api/exchanges                                  (Staff: pass ca + lời nhắn)
-POST   /api/exchanges/{id}/take                        (Staff: nhận ca)
-PUT    /api/exchanges/{id}/approve                     (Manager)
-PUT    /api/exchanges/{id}/reject                      (Manager)
-
-# News Feed
-GET    /api/news
-POST   /api/news
-GET    /api/news/{id}
-GET    /api/news/{id}/reads        (Manager)
-POST   /api/news/{id}/read         (Staff: mark as read)
-
-# Notifications
-GET    /api/notifications
-PUT    /api/notifications/{id}/read
-PUT    /api/notifications/read-all
-```
-
-#### Tuần 3: Setup môi trường, scaffold & prototype
-
-| ID | Công việc | Đầu ra |
-|----|-----------|--------|
-| S0-11 | Setup Docker Compose (FastAPI + PostgreSQL + Frontend), chạy 1 lệnh | docker-compose.yml chạy được |
-| S0-12 | Scaffold Backend FastAPI (structure, config, security, deps, Dockerfile) | Backend scaffold |
-| S0-13 | Scaffold Frontend Vite + React + TS + Tailwind + shadcn/ui + Zustand | Frontend scaffold |
-| S0-14 | DB models SQLAlchemy (8 bảng) + Alembic initial migration + seed cơ bản | Migration files |
-| S0-15 | Prototype Login + Dashboard shell (sidebar Manager / nav responsive Staff) | UI prototype |
-| S0-16 | Viết draft **Chương 2** (cơ sở lý thuyết + công nghệ, 10–15 trang) | Draft Chương 2 |
-
-**Cấu trúc thư mục dự án:**
-
-```
-galaxy-staff/
-├── backend/
-│   ├── app/
-│   │   ├── api/
-│   │   │   ├── auth.py
-│   │   │   ├── users.py
-│   │   │   ├── availabilities.py
-│   │   │   ├── shifts.py
-│   │   │   ├── exchanges.py
-│   │   │   ├── news.py
-│   │   │   └── notifications.py
-│   │   ├── core/
-│   │   │   ├── config.py
-│   │   │   ├── security.py
-│   │   │   └── deps.py
-│   │   ├── models/
-│   │   │   ├── user.py
-│   │   │   ├── availability.py
-│   │   │   ├── shift.py
-│   │   │   ├── exchange.py
-│   │   │   ├── news.py
-│   │   │   └── notification.py
-│   │   ├── schemas/
-│   │   │   └── (pydantic schemas)
-│   │   ├── services/
-│   │   │   ├── auto_scheduler.py
-│   │   │   └── notification_service.py
-│   │   └── main.py
-│   ├── alembic/
-│   ├── tests/
-│   ├── Dockerfile
-│   └── requirements.txt
-├── frontend/
-│   ├── src/
-│   │   ├── components/
-│   │   ├── pages/
-│   │   ├── hooks/
-│   │   ├── services/  (API calls)
-│   │   ├── stores/    (Zustand)
-│   │   └── types/
-│   ├── Dockerfile
-│   └── package.json
-├── docker-compose.yml
-└── README.md
-```
-
-> **Mốc M1 (cuối Tuần 3):** Thiết kế chốt, môi trường chạy được, prototype shell.
+| Sprint | Nội dung | Tuần | Ngày | Mốc |
+|--------|----------|------|------|-----|
+| **S1** | Nền tảng (trả nợ thiết kế → chạy được) | T1 | 27/07 – 02/08 | M1 |
+| **S2** | Auth + News Feed + Notification | T2–T3 | 03/08 – 16/08 | M2 |
+| **S3** | Availability | T4–T5 | 17/08 – 30/08 | M3 |
+| **S4** | Roster + Auto-Scheduling | T6–T7 | 31/08 – 13/09 | **M4 — CORE MVP** |
+| **S5** | Shift Exchange | T8 | 14/09 – 20/09 | M5 |
+| **S6** | Kiểm thử, Responsive & Deploy | T9 | 21/09 – 27/09 | M6 |
+| **S7** | Hoàn thiện báo cáo, Slide & Nộp | T10 | 28/09 – 04/10 | M7 |
+| — | **🎯 NỘP BÀI** | — | **05/10/2026** | — |
 
 ---
 
-### SPRINT 1 — AUTH + NEWS FEED + NOTIFICATION (Tuần 4–5)
+## ✅ GIAI ĐOẠN 0 — PHÂN TÍCH & THIẾT KẾ (đã hoàn thành 26/07/2026)
 
-**Mục tiêu**: Thông toàn bộ pipeline full-stack qua các tính năng "nhẹ" (Auth + News Feed + Notification) và **deploy slice sớm** trước khi vào phần khó.
+Giữ lại trong tài liệu để đối chiếu khi viết Chương 3 và khi bảo vệ.
 
-#### Tuần 4: Backend Auth + News Feed + Notification
+| ID | Công việc | Trạng thái | Sản phẩm thực tế |
+|----|-----------|-----------|------------------|
+| S0-01 | Phân tích yêu cầu, đặc tả Use Case | ✅ | **55 FR** trên 5 module + **14 UC** (3 chi tiết, 11 tóm tắt) — `docs/requirements/` |
+| S0-02 | Use Case Diagram | ✅ | 6 file: tổng quan + 5 module — `docs/diagrams/usecase-*.md` |
+| S0-03 | Activity Diagram | ✅ | **4 sơ đồ** (availability, auto-schedule, shift-exchange, news-post) — đúng số lượng Chương 3.2 yêu cầu |
+| S0-04 | Sequence Diagram | ✅ | 5 file / **12 sơ đồ**, lifeline theo tầng kiến trúc — `docs/diagrams/sequence-*.md` |
+| S0-05 | Thiết kế ERD | ✅ | **ERD v2.0 — 11 bảng**, 3NF, đã soát chéo 2 lượt với toàn bộ FR/BR — `docs/erd.md` |
+| S0-06 | API Specification | ✅ | **OpenAPI 3.0.3 — 45 endpoint / 36 path**, qua `openapi-spec-validator` không lỗi — `docs/api/openapi.yaml` |
+| S0-07 | Tài liệu SRS | ✅ | 55 FR + **39 NFR** + 14 UC, gộp tại `docs/requirements/chapter3-requirements.md` |
+| S0-10a | GitHub repo + Git Flow | ✅ | [github.com/minhai4wrk/GALAXY-STAFF](https://github.com/minhai4wrk/GALAXY-STAFF) — `main` + `develop`, Conventional Commits, `.gitignore` |
+| S0-11 | Docker Compose | ✅ | postgres 16 + backend FastAPI, đã chạy thật, `/health` trả `{"status":"ok","database":"up"}` |
 
-| ID | Công việc | Chi tiết |
-|----|-----------|----------|
-| S1-01 | Backend Auth: login, JWT generate/verify, bcrypt, RBAC middleware | python-jose + passlib |
-| S1-02 | User Management API (CRUD, list staff, toggle active, register Manager-only) | Manager-only endpoints |
-| S1-03 | Frontend Auth: Login connect API, token storage, ProtectedRoute, role routing | Protected routes |
-| S1-04 | News Feed API (CRUD, upload ảnh, mark-as-read, reads list) | 5 endpoints |
-| S1-05 | Notification API + WebSocket server (connect, push, mark read) | Polling fallback nếu khó |
+**Kết quả nổi bật của giai đoạn thiết kế** (dùng cho Chương 4.3 — Thảo luận):
 
-#### Tuần 5: Frontend News Feed + Notification + Deploy slice
+| Đợt audit | Cách làm | Phát hiện |
+|-----------|----------|-----------|
+| Audit ERD | Đi từng FR/BR, hỏi *"dữ liệu này lưu ở cột nào?"* | **8 lỗi nặng + 12 lỗi vừa**, trong đó 3 lỗi khiến chức năng không thể chạy (ca qua nửa đêm bị CHECK constraint từ chối, thiếu bảng lưu đơn xin ca, không phân biệt được ca auto vs gán tay). ERD 8 → 11 bảng |
+| Audit API | Đi từng FR, hỏi *"client gọi endpoint nào?"* | **8 endpoint** đã mô tả hành vi nhưng chưa từng đặc tả — nặng nhất là duyệt/từ chối đơn xin ca trống: bảng và ENUM đã có, endpoint thì không, nên đơn của Staff sẽ nằm chết ở `pending` |
 
-| ID | Công việc | Chi tiết |
-|----|-----------|----------|
-| S1-06 | News Feed UI (list, tạo bài + ảnh, đọc, mark read, seen indicator) | CRUD UI |
-| S1-07 | Notification UI (bell + badge, dropdown, real-time WebSocket) | Real-time |
-| S1-08 | Trigger notification khi đăng news mới | — |
-| S1-09 | Unit test Auth + News + Notification (pytest + httpx, ≥10 TC) | Test coverage |
-| S1-10 | Sprint 1 Review + **deploy thử slice** lên Render (smoke test live) | Live URL sớm |
-| S1-11 | Viết draft **Chương 3.1–3.2** (phương pháp, phân tích yêu cầu) | Draft Chương 3 |
+> Cả hai đợt cho thấy cùng một bài học: **đọc xuôi tài liệu rồi đoán xem thiếu gì thì không bao giờ tìm ra**. Phải đi ngược từ yêu cầu về thiết kế.
 
-> **Mốc M2 (cuối Tuần 5):** Auth + News Feed + Notification chạy end-to-end, đã deploy live.
+### ❗ Nợ còn lại của giai đoạn thiết kế → dồn vào Sprint 1
 
----
-
-### SPRINT 2 — AVAILABILITY MODULE (Tuần 6–8)
-
-**Mục tiêu**: Module Availability **đầy đủ theo `description.md`** — grid kéo-thả + Overlap view + Template-shift + deadline + min-5 ngày. Đây là phần UX khó nhất, không hạ cấp.
-
-#### Tuần 6: Backend Availability + nền tảng Grid
-
-| ID | Công việc | Chi tiết |
-|----|-----------|----------|
-| S2-01 | Availability API: batch upsert, model slot 30p (8h–02h), tuần T6→T5 | Backend |
-| S2-02 | Availability API: Overview/Overlap endpoint (aggregate đếm người rảnh/slot) | Aggregate query |
-| S2-03 | Availability API: deadline (khóa 18h T7, mở tuần mới) + min-5-ngày + flow xin phép | Deadline logic |
-| S2-04 | Availability Grid component: lưới ngày × slot 30p, render khung | Nền tảng UI |
-
-#### Tuần 7: UX cốt lõi (kéo-thả + overlap)
-
-| ID | Công việc | Chi tiết |
-|----|-----------|----------|
-| S2-05 | Availability **drag-to-paint**: giữ + kéo tô/xóa, mouse + touch | ⚠️ Khó — core UX |
-| S2-06 | **Template-shift**: kéo Sáng/Chiều/Tối/Full → auto-fill; nút (+) tạo shift thủ công | — |
-| S2-07 | **Overlap view**: heatmap xanh theo mật độ + hover/click ô → ai rảnh/bận | ⚠️ Khó — core UX |
-
-#### Tuần 8: Tích hợp & test
-
-| ID | Công việc | Chi tiết |
-|----|-----------|----------|
-| S2-08 | Integration: save/load, deadline warning, đếm ngày + popup xin phép <5 ngày | — |
-| S2-09 | Test Availability (CRUD, deadline, overlap aggregate, ≥6 TC) | — |
-| S2-10 | Sprint 2 Review + screenshot + redeploy | — |
-| S2-11 | Viết **Chương 3.3** (thiết kế DB) + phần Availability của 3.5 | Draft Chương 3 |
-
-> **Mốc M3 (cuối Tuần 8):** Module Availability hoàn chỉnh.
+| ID | Việc còn nợ | Vì sao chưa xong |
+|----|-------------|------------------|
+| S0-08 | Wireframe các màn hình chính | Chưa vẽ. Chương 3.5 cần 3–4 trang, không có wireframe thì không viết được |
+| S0-09 | Đặc tả tương tác drag-to-paint (Availability) | Chưa viết. Bỏ qua bước này thì lúc code S3-05 sẽ mò |
+| S0-10b | README.md | Chưa có. Còn là yêu cầu bắt buộc **NFR-DEPLOY-05** |
+| S0-12b | `core/security.py` + `core/deps.py` | Scaffold backend mới có `config.py` + `database.py` |
+| S0-13 | Scaffold Frontend | Thư mục `frontend/` chưa tồn tại |
+| S0-14 | SQLAlchemy models + Alembic + seed | `models/` còn rỗng, chưa có `alembic/` |
+| S0-17 | Export PNG/SVG toàn bộ diagram | `docs/diagrams/out/` chưa tồn tại — cần cho báo cáo |
 
 ---
 
-### SPRINT 3 — ROSTER + AUTO-SCHEDULING (Tuần 9–11)
+## SPRINT 1 — NỀN TẢNG (Tuần 1: 27/07 – 02/08)
 
-**Mục tiêu**: Roster (xem ngày/tuần, kéo-thả xếp ca) + Auto-Scheduling + publish + apply open-shift. **Kết thúc sprint = CORE MVP feature-complete.**
+**Mục tiêu**: trả hết nợ thiết kế và đưa dự án từ trạng thái "có tài liệu" sang "chạy được". Kết thúc sprint phải gõ được `docker compose up` là có DB đủ 11 bảng, dữ liệu mẫu, và một trang React trắng hiện ra.
 
-#### Tuần 9: Backend Roster + thuật toán
+| ID | Công việc | Chi tiết | Ước lượng |
+|----|-----------|----------|-----------|
+| S1-01 | SQLAlchemy models — 11 bảng | Đúng ERD v2.0: ENUM native, `shifts.start_at/end_at` TIMESTAMPTZ, `assignment_source`, `is_locked` | 1,5 ngày |
+| S1-02 | Alembic initial migration | Gồm cả hàm SQL `op_minute()`, extension `btree_gist`, 2 ràng buộc `EXCLUDE` chống chồng giờ, 2 unique index có điều kiện | 1 ngày |
+| S1-03 | `core/security.py` + `core/deps.py` | Băm bcrypt (cost 12), tạo/verify JWT, `get_current_user`, `get_current_manager` | 0,5 ngày |
+| S1-04 | Seed data | 1 Manager + 12 Staff + 1 location + lịch rảnh 2 tuần + ca mẫu + 3 bài news | 0,5 ngày |
+| S1-05 | Scaffold Frontend | Vite + React 18 + TS strict + Tailwind + shadcn/ui + Zustand + TanStack Query + axios instance | 1 ngày |
+| S1-06 | README.md | Mô tả dự án, kiến trúc, cài đặt, `.env`, chạy Docker, cấu trúc thư mục (NFR-DEPLOY-05) | 0,5 ngày |
+| S1-07 | Export diagram PNG/SVG | Toàn bộ UCD + Activity + Sequence + ERD → `docs/diagrams/out/` | 0,5 ngày |
+| S1-08 | Wireframe 8 màn hình (lo-fi) | Login · Dashboard M/S · Availability Grid · Overlap View · Roster tuần/ngày · Exchange Board · News Feed · Notification panel | 1 ngày |
+| S1-09 | Đặc tả tương tác drag-to-paint | State machine của grid: mousedown/move/up, chế độ tô vs xóa, gộp ô liền nhau thành khoảng, logic template-shift, hành vi trên touch | 0,5 ngày |
+
+**Definition of Done — M1 (02/08)**
+- [ ] `alembic upgrade head` tạo đủ **11 bảng** + `op_minute()` + `btree_gist` + EXCLUDE constraint
+- [ ] Chèn thử 2 khung giờ chồng nhau trong cùng ngày → **database từ chối** (chứng minh EXCLUDE hoạt động)
+- [ ] Chèn thử ca `18:00 → 02:00` hôm sau → **được chấp nhận** (chứng minh đã hết bug ca qua nửa đêm)
+- [ ] Seed chạy xong: đăng nhập được bằng tài khoản Manager mẫu qua Swagger
+- [ ] `npm run dev` lên được trang React có Tailwind
+- [ ] README đọc xong là người lạ chạy được dự án trong 15 phút
+
+---
+
+## SPRINT 2 — AUTH + NEWS FEED + NOTIFICATION (Tuần 2–3: 03/08 – 16/08)
+
+**Mục tiêu**: thông toàn bộ pipeline full-stack bằng nhóm tính năng nhẹ, và **deploy live sớm** để rủi ro deploy không dồn về cuối kỳ.
+
+### Tuần 2 (03/08 – 09/08): Backend
 
 | ID | Công việc | Chi tiết |
 |----|-----------|----------|
-| S3-01 | Shifts/Roster API: CRUD, assign, filter ngày/tuần, open-shift list | Backend Roster |
-| S3-02 | **Auto-Scheduling engine v1**: rules-based greedy + constraints | auto_scheduler.py |
+| S2-01 | Auth API — 5 endpoint | login, refresh, me, change-password, register. Lỗi đăng nhập **không phân biệt** email sai / mật khẩu sai (BR-06) |
+| S2-02 | Users API — 5 endpoint | list (search/filter/phân trang), detail, update, toggle status, reset password. Chặn Manager tự vô hiệu hóa mình (BR-04) |
+| S2-03 | News API — 8 endpoint | CRUD + upload ảnh (≤ 5MB, tối đa 3 ảnh) + mark-as-read **idempotent** + danh sách seen |
+| S2-04 | Notification API — 3 endpoint + WebSocket | list, mark read, read-all; `WS /ws/notifications` fan-out khi có bài news mới |
+| S2-05 | Test backend (≥ 12 TC) | Mỗi endpoint tối thiểu 3 ca: success / validation / auth |
 
-**Chi tiết thuật toán Auto-Scheduling (Rules-based):**
+### Tuần 3 (10/08 – 16/08): Frontend + Deploy
+
+| ID | Công việc | Chi tiết |
+|----|-----------|----------|
+| S2-06 | Auth UI | Login, ProtectedRoute, điều hướng theo role, ép đổi mật khẩu khi `must_change_password = true` |
+| S2-07 | Quản lý nhân viên UI (Manager) | Bảng danh sách + tìm kiếm + tạo/sửa + toggle active + reset mật khẩu |
+| S2-08 | News Feed UI | Feed, tạo bài + ảnh, chi tiết, badge "Mới", panel seen tracking cho Manager |
+| S2-09 | Notification UI | Chuông + badge số, dropdown, kết nối WebSocket, **fallback polling 30s** nếu WS lỗi |
+| S2-10 | Deploy slice lên Render | Backend + Postgres + Frontend, cấu hình biến môi trường, smoke test trên URL live |
+| S2-11 | Viết **Chương 2** (10–15 trang) | Cơ sở lý thuyết + công nghệ. Viết song song, không dồn |
+| S2-12 | Sprint Review + **screenshot** | Chụp Login, phân quyền, News Feed, seen tracking, notification, Swagger |
+
+**Definition of Done — M2 (16/08)**
+- [ ] Đăng nhập → xem feed → nhận thông báo real-time, **chạy trên URL live** chứ không chỉ localhost
+- [ ] Staff gọi endpoint Manager-only → nhận đúng **403**
+- [ ] ≥ 12 test case xanh
+- [ ] Đã có ảnh chụp màn hình cho Chương 4.1 phần Auth + News + Notification
+- [ ] Chương 2 xong bản draft
+
+---
+
+## SPRINT 3 — AVAILABILITY (Tuần 4–5: 17/08 – 30/08)
+
+**Mục tiêu**: module UX khó nhất, **không hạ cấp**. Đây là phần tạo ấn tượng khi demo.
+
+### Tuần 4 (17/08 – 23/08): Backend + nền tảng lưới
+
+| ID | Công việc | Chi tiết |
+|----|-----------|----------|
+| S3-01 | Availability API — batch upsert | Thay trọn bản đăng ký của tuần, server tự tính `total_days` |
+| S3-02 | Overlap endpoint | Aggregate SQL đếm số người rảnh mỗi ô; **chỉ trả ô có người** để payload không phình |
+| S3-03 | Deadline + min-5-ngày + stats | Khóa 18h00 Thứ 7 tính ở tầng service (không lưu cột), warning kèm `reason`, endpoint thống kê ai đã/chưa đăng ký |
+| S3-04 | Test Availability (≥ 8 TC) | Đặc biệt: ca qua nửa đêm, chồng giờ, gọi API sau deadline phải nhận 403 |
+| S3-05 | Component lưới 7 ngày × 36 ô | Render khung, header ngày T6→T5, cột giờ 8h00–02h00 |
+
+### Tuần 5 (24/08 – 30/08): UX cốt lõi
+
+| ID | Công việc | Chi tiết |
+|----|-----------|----------|
+| S3-06 | **Drag-to-paint** | Giữ + kéo để tô/xóa, hỗ trợ cả chuột lẫn cảm ứng — theo đặc tả S1-09 ⚠️ Khó |
+| S3-07 | **Template-shift** | Sáng / Chiều / Tối / Full → tự fill; nút (+) nhập tay cho mobile |
+| S3-08 | **Overlap View** | Heatmap gradient theo mật độ + hover/click ô hiện ai rảnh, ai bận ⚠️ Khó |
+| S3-09 | Tích hợp | Save/load, countdown deadline, popup nhập lý do khi dưới 5 ngày, chuyển tuần |
+| S3-10 | Viết **Chương 3.3** (thiết kế DB) + phần Availability của **3.5** | — |
+| S3-11 | Sprint Review + **screenshot** | Grid, drag-to-paint, template, overlap heatmap, popup lý do, màn hình sau deadline |
+
+**Definition of Done — M3 (30/08)**
+- [ ] Staff đăng ký được lịch bằng kéo-thả **và** bằng nút (+), lưu rồi tải lại vẫn đúng
+- [ ] Đăng ký ca tối `18:00 → 02:00` không lỗi ở cả API lẫn UI
+- [ ] Overlap View hiện đúng mật độ, hover ra danh sách người
+- [ ] Gọi API sau 18h00 Thứ 7 → 403 ngay cả khi bỏ qua giao diện
+- [ ] Chương 3.3 xong draft
+
+---
+
+## SPRINT 4 — ROSTER + AUTO-SCHEDULING (Tuần 6–7: 31/08 – 13/09)
+
+**Mục tiêu**: trái tim của hệ thống. Kết thúc sprint = **CORE MVP feature-complete**.
+
+### Tuần 6 (31/08 – 06/09): Backend + thuật toán
+
+| ID | Công việc | Chi tiết |
+|----|-----------|----------|
+| S4-01 | Shifts API — CRUD + filter | Tạo/sửa/xóa mềm, lọc theo ngày/tuần, lọc Open-shift. Chặn sửa/xóa ca `is_locked` |
+| S4-02 | **Auto-Scheduling engine** | Greedy + ràng buộc C1–C5, kèm endpoint reset chỉ gỡ ca `assignment_source = auto` |
+| S4-03 | Publish + đơn xin ca | Publish theo tuần + fan-out notification; apply / list / approve / reject / cancel đơn xin ca trống |
+| S4-04 | Kiểm tra xung đột | 5 mã lỗi: `not_available`, `overlapping_shift`, `exceeds_weekly_hours`, `insufficient_rest`, `too_many_consecutive_days` + cơ chế `override_reason` |
+| S4-05 | Benchmark + test (≥ 10 TC) | 50–100 NV × 200–300 ca, mục tiêu dưới 10 giây → chuẩn bị sẵn số liệu cho TC1 |
+
+**Thuật toán Auto-Scheduling (greedy + constraint satisfaction)**
 
 ```
 Input:
-  - open_shifts: Danh sách ca trống cần gán (tuần tới)
-  - availabilities: Lịch rảnh của tất cả staff
-  - constraints: {max_hours_per_week, min_rest_between_shifts, max_consecutive_days}
+  open_shifts    : ca trống của tuần (assigned_user_id IS NULL)
+  availabilities : lịch rảnh toàn bộ nhân viên trong tuần đó
+  constraints    : max_hours_per_week=48, min_rest_hours=8, max_consecutive_days=6
 
-Algorithm (Greedy + Constraint Satisfaction):
-  1. Sort open_shifts theo priority (ca tối > ca sáng, cuối tuần > ngày thường)
-  2. For each open_shift:
-     a. Tìm danh sách staff rảnh tại thời điểm đó (filter by availability)
-     b. Filter thêm: staff chưa vượt max_hours, đủ rest time
-     c. Sort eligible staff theo: ít giờ nhất tuần này (cân bằng công bằng)
-     d. Gán staff đầu tiên trong danh sách eligible
-     e. Cập nhật assigned_hours[staff]
-  3. Return: assigned_shifts + unassigned_shifts (nếu không đủ người)
+Thuật toán:
+  1. Sắp open_shifts theo độ ưu tiên (ca tối trước ca sáng, cuối tuần trước ngày thường)
+  2. Với mỗi ca:
+     a. Lọc nhân viên RẢNH đúng khung giờ  ......................... C5
+     b. Loại người vi phạm: quá 48h/tuần (C1), nghỉ dưới 8h (C2),
+        quá 6 ngày liên tiếp (C3), chồng ca đã có (C4)
+     c. Sắp ứng viên còn lại theo tổng giờ ÍT NHẤT trước (cân bằng công bằng)
+     d. Gán người đầu danh sách, cập nhật assigned_hours
+     e. Không còn ai đủ điều kiện → giữ ca ở Open-shift + ghi unassigned_reason
+  3. Trả về: assigned_shifts, unassigned_shifts, workload từng người
 
-Complexity: O(S × N) với S = số ca, N = số staff → < 1s cho 300 ca × 100 NV
+Độ phức tạp: O(S × N log N) — S ca, N nhân viên
+Kết quả là DRAFT, Manager review rồi mới publish
 ```
 
-#### Tuần 10: Roster API publish/apply + Week view
+> ⚠️ **Chỗ dễ sinh bug nhất toàn dự án**: `availabilities` lưu `day_of_week` + `TIME`, còn `shifts` lưu `TIMESTAMPTZ`. Khi kiểm tra C5 phải quy đổi `start_at` sang **giờ địa phương của rạp** rồi mới tính `op_minute` — server production chạy UTC. Công thức quy đổi ở [docs/erd.md](../docs/erd.md) mục 8.
+
+### Tuần 7 (07/09 – 13/09): Frontend Roster
 
 | ID | Công việc | Chi tiết |
 |----|-----------|----------|
-| S3-03 | Roster API: publish + apply open-shift (Staff) + approve apply (Manager) | — |
-| S3-04 | Test + benchmark auto-scheduler (50–100 NV × 200–300 ca, <10s, edge case) | Chuẩn bị TC1 |
-| S3-05 | Roster UI — Week view (Daily Card): cột ngày, hàng NV, hàng open-shift, thanh màu | ⚠️ Khó |
+| S4-06 | Roster — Week view | Cột 7 ngày, hàng nhân viên, **hàng Open-shift trên cùng**, card ca có màu theo trạng thái |
+| S4-07 | Roster — Day view | Timeline ngang 8h–02h, mỗi ca là một thanh |
+| S4-08 | Xếp ca bằng **form/modal** | Click ô ngày → form tạo/sửa ca *(đã cắt kéo-thả — xem MoSCoW)* |
+| S4-09 | Nút Auto-Schedule + Reset + Publish | Hiện kết quả: tỉ lệ phủ, ca chưa gán, bảng cân bằng giờ |
+| S4-10 | Cảnh báo xung đột trên UI | Card đỏ + tooltip mô tả, hộp thoại xác nhận ghi đè → chuẩn bị TC3 |
+| S4-11 | Staff: xem lịch cá nhân + apply Open-shift | Kèm tổng giờ tuần và danh sách đồng nghiệp cùng ca |
+| S4-12 | Viết **Chương 3.4** (API) + **3.6** (thuật toán) | — |
+| S4-13 | Sprint Review + **screenshot** | Week view, Day view, form xếp ca, kết quả auto-schedule, cảnh báo đỏ, publish |
 
-#### Tuần 11: Day view + drag-drop xếp ca + tích hợp
+**Definition of Done — M4 (13/09) — CORE MVP**
+- [ ] Manager tạo ca → chạy Auto-Schedule → sửa tay vài ca → Publish → Staff thấy lịch
+- [ ] Auto-Schedule đạt **≥ 90%** tỉ lệ gán và chạy **dưới 10 giây** ở quy mô benchmark
+- [ ] Xếp người vượt 48h → hiện cảnh báo đỏ, có đường ghi đè kèm lý do
+- [ ] Staff apply ca trống → Manager duyệt → ca chuyển sang Staff + thông báo tới nơi
+- [ ] Chương 3.4 và 3.6 xong draft
+
+---
+
+## SPRINT 5 — SHIFT EXCHANGE (Tuần 8: 14/09 – 20/09)
+
+**Mục tiêu**: trao đổi ca (pass / nhận / duyệt) với xử lý tranh chấp đồng thời. Nén còn 1 tuần vì thiết kế đã xong trọn vẹn và đây là lần thứ ba lặp lại mẫu CRUD + approve/reject.
 
 | ID | Công việc | Chi tiết |
 |----|-----------|----------|
-| S3-06 | Roster UI — Day view (timeline) | — |
-| S3-07 | Roster UI — Manager **kéo-thả xếp ca**: tạo/sửa khối ca (day), click ngày tạo ca (week), modify | ⚠️ Khó — core UX |
-| S3-08 | Roster UI — nút Auto-Schedule + Publish + Staff apply open-shift, kết nối API | — |
-| S3-09 | Cảnh báo xung đột xếp ca (chồng giờ bận / vượt max_hours / thiếu rest) — màu đỏ | Chuẩn bị TC3 |
-| S3-10 | Trigger notification khi publish roster / approve apply | — |
-| S3-11 | Sprint 3 Review + screenshot + redeploy | — |
-| S3-12 | Viết **Chương 3.4** (API) + **3.6** (thuật toán auto-schedule) | Draft Chương 3 |
+| S5-01 | Exchange API — 6 endpoint | list, pass ca (+ lời nhắn), hủy pass, nhận ca, approve, reject |
+| S5-02 | Chống tranh chấp | Optimistic locking `UPDATE ... WHERE status='available_for_exchange'` + unique index có điều kiện ở DB → chuẩn bị TC2 |
+| S5-03 | Cảnh báo trùng giờ hai bước | Lần gọi đầu trả 409 kèm mô tả; gọi lại với `confirm_conflict=true` mới cho nhận, đánh dấu để Manager thấy khi duyệt |
+| S5-04 | Exchange Board UI | Bố cục như Roster: ca thường xám nhạt, ca đang pass highlight cam, ca chờ duyệt highlight tím |
+| S5-05 | UI nhận ca + duyệt | Popup chi tiết + lời nhắn + nút "Nhận ca"; màn hình duyệt của Manager có hiện cảnh báo |
+| S5-06 | Test Exchange (≥ 8 TC) | Bắt buộc có ca **5 request đồng thời → đúng 1 thành công** |
+| S5-07 | Rà soát notification toàn hệ thống | Đủ 10 loại `notification_type`, click điều hướng đúng ngữ cảnh |
+| S5-08 | Sprint Review + **screenshot** | Board, popup lời nhắn, cảnh báo trùng giờ, màn duyệt, thông báo hai chiều |
 
-> **Mốc M4 (cuối Tuần 11): CORE MVP feature-complete** — còn hơn 1 tháng cho test/deploy/báo cáo.
+**Definition of Done — M5 (20/09)**
+- [ ] Chuỗi A pass → B nhận → Manager duyệt → ca sang B, cả hai đều nhận thông báo
+- [ ] Test đồng thời 5 request: đúng 1 thành công, 4 nhận 409
+- [ ] Không ai tự nhận được ca mình đăng (chặn ở cả service lẫn CHECK constraint)
+- [ ] Đủ **5 module**, notification phủ hết sự kiện
 
 ---
 
-### SPRINT 4 — SHIFT-EXCHANGE + TÍCH HỢP NOTIFICATION (Tuần 12–13)
+## SPRINT 6 — KIỂM THỬ, RESPONSIVE & DEPLOY (Tuần 9: 21/09 – 27/09)
 
-**Mục tiêu**: Trao đổi ca (pass/nhận + duyệt + concurrency) và rà soát tích hợp notification toàn hệ thống. *(Swap ca 2 chiều → Version 2.)*
-
-#### Tuần 12: Backend Exchange + UI board
+**Mục tiêu**: hệ thống ổn định, chạy tốt trên điện thoại, deploy hoàn chỉnh, dữ liệu sẵn sàng demo.
 
 | ID | Công việc | Chi tiết |
 |----|-----------|----------|
-| S4-01 | Shift-Exchange API: pass ca (+lời nhắn), nhận ca, pending lock, approve/reject | Backend Exchange |
-| S4-02 | Exchange API: concurrency (optimistic/DB constraint, **chỉ 1 người nhận**) + state machine | Chuẩn bị TC2 |
-| S4-03 | Shift-Exchange UI: board giống Roster, ca pass highlight, xem lời nhắn + nút nhận | Frontend Exchange |
+| S6-01 | Unit test toàn bộ + coverage | Tổng ≥ 40 TC (cộng dồn các sprint), xuất báo cáo coverage |
+| S6-02 | **TC1** — Auto-Scheduling | 200 ca trống × 50 nhân viên → ≥ 90% gán đúng, không vi phạm ràng buộc, dưới 10s |
+| S6-03 | **TC2** — Pass ca / Nhận ca | Đúng trạng thái từng bước, cảnh báo trùng giờ, thông báo đúng người, request đồng thời bị chặn |
+| S6-04 | **TC3** — Cảnh báo quá giờ | Xếp vượt 48h hoặc chồng ca → hiện cảnh báo; auto-schedule **không** tự gán ca vi phạm |
+| S6-05 | Responsive + fix CSS | 375 / 414 / 768 / 1024px. Staff dùng mobile-web là chính |
+| S6-06 | Stress test | Locust hoặc JMeter: 50–100 người cùng lưu lịch rảnh sát deadline |
+| S6-07 | Deploy hoàn chỉnh + mock data | Toàn bộ stack trên Render, seed 1 Manager + 12 Staff + lịch 2 tuần + ca + news |
+| S6-08 | Fix bug tổng + polish | Color-coding, empty state, loading skeleton, thông báo lỗi tiếng Việt |
+| S6-09 | Viết **Chương 4** | Kết quả triển khai (ảnh 5 module) + kết quả kiểm thử |
 
-#### Tuần 13: Duyệt + tích hợp + test + báo cáo
-
-| ID | Công việc | Chi tiết |
-|----|-----------|----------|
-| S4-04 | Exchange UI: cảnh báo trùng giờ trước khi nhận, trạng thái pending/approved/rejected | — |
-| S4-05 | Manager Approve/Reject UI + notification 2 chiều (A & B) | — |
-| S4-06 | Rà soát notification toàn hệ thống (publish, pass, approve/reject, news, apply) | — |
-| S4-07 | Unit test Shifts + Exchange + concurrent (≥8 TC) | — |
-| S4-08 | Sprint 4 Review + screenshot + redeploy | — |
-| S4-09 | Ghép & hoàn thiện **Chương 3** (3.1–3.6) | Hoàn thiện Chương 3 |
-
-> **Mốc M5 (cuối Tuần 13):** Đủ 4 module, tích hợp xong, đã deploy.
-
----
-
-### SPRINT 5 — KIỂM THỬ, POLISH & DEPLOY (Tuần 14–15)
-
-**Mục tiêu**: Hệ thống ổn định, responsive, deploy online, mock data demo-ready.
-
-#### Tuần 14: Test + responsive
-
-| ID | Công việc | Chi tiết |
-|----|-----------|----------|
-| S5-01 | Unit test toàn bộ API + coverage report (≥20 TC tổng) | pytest + httpx |
-| S5-02 | Integration **TC1** Auto-Scheduling | Nghiệm thu 1 |
-| S5-03 | Integration **TC2** Pass ca | Nghiệm thu 2 |
-| S5-04 | Integration **TC3** Cảnh báo quá giờ | Nghiệm thu 3 |
-| S5-05 | Responsive testing + fix CSS (375 / 414 / 768 / 1024px) | Staff dùng mobile-web |
-
-**Chi tiết 3 Test Case Nghiệm Thu:**
-
-| # | Test Case | Mô tả | Tiêu chí Pass |
-|---|-----------|-------|----------------|
-| TC1 | Auto-Scheduling | Tạo 200 ca trống, 50 staff có lịch rảnh → Chạy auto-schedule | ≥ 90% ca được gán đúng, không vi phạm constraint, hoàn thành < 10s |
-| TC2 | Pass ca / Nhận ca | Staff A pass ca → Staff B nhận → Manager approve → Ca chuyển sang B | Trạng thái đúng tại mỗi bước, cảnh báo trùng ca, notification gửi đúng, concurrent request bị block |
-| TC3 | Cảnh báo quá giờ | Xếp staff vượt 48h/tuần hoặc ca chồng giờ bận | Hệ thống hiện warning, không tự động gán khi auto-schedule |
-
-#### Tuần 15: Stress test + deploy + mock data + polish
-
-| ID | Công việc | Chi tiết |
-|----|-----------|----------|
-| S5-06 | Stress test (Locust/JMeter): peak 50–100 user save availability | *Có thể cắt nếu trễ* |
-| S5-07 | Deploy hoàn chỉnh (BE+FE+Postgres) + cấu hình env + test live | Render/Railway |
-| S5-08 | Mock data hoàn chỉnh: 1 Manager + 12 Staff + lịch 2 tuần + ca mẫu + news | Demo-ready |
-| S5-09 | Fix bug tổng hợp + polish UI (color-coding, empty/loading states) | Buffer chính |
-| S5-10 | Viết **Chương 4** (kết quả + screenshot 4 module + kết quả test) | Draft Chương 4 |
-
-> **Mốc M6 (cuối Tuần 15):** Demo-ready, đã deploy & test xong.
+**Definition of Done — M6 (27/09)**
+- [ ] Cả 3 test case nghiệm thu **đạt**, có số liệu và ảnh chụp
+- [ ] Không còn lỗi chặn luồng demo
+- [ ] URL live chạy được từ điện thoại
+- [ ] Chương 4 xong draft
 
 ---
 
-### SPRINT 6 — BÁO CÁO, SLIDE & NGHIỆM THU (Tuần 16–17)
+## SPRINT 7 — BÁO CÁO, SLIDE & NỘP (Tuần 10: 28/09 – 04/10)
 
-**Mục tiêu**: Hoàn thiện báo cáo ≥ 50 trang, Turnitin, slide, dry-run demo, nộp.
+**Mục tiêu**: hoàn thiện báo cáo ≥ 50 trang, Turnitin, slide, tổng duyệt demo.
 
-#### Tuần 16: Hoàn thiện báo cáo + Turnitin
+| ID | Công việc | Chi tiết | Hạn |
+|----|-----------|----------|-----|
+| S7-01 | Hoàn thiện Chương 4 + Kết luận | Đánh giá ưu/nhược, bài học, hướng phát triển V2 | 29/09 |
+| S7-02 | Tài liệu tham khảo + danh mục | ≥ 10–15 nguồn theo IEEE/APA; danh mục hình / bảng / viết tắt | 30/09 |
+| S7-03 | Phụ lục A–F | HDSD Manager & Staff, mã nguồn auto-scheduler, ERD đầy đủ, export Swagger, hướng dẫn cài đặt | 01/10 |
+| S7-04 | Mở đầu + Lời cảm ơn + Mục lục + soát toàn bộ | Chính tả, định dạng, đánh số hình/bảng, trích dẫn | 02/10 |
+| S7-05 | **Turnitin** | Chỉnh sửa nếu vượt 20% — **chừa đủ thời gian, đây là mục dễ vỡ kế hoạch nhất** | 02/10 |
+| S7-06 | Slide 15–20 trang | Vấn đề → giải pháp → kiến trúc → demo → kết quả | 03/10 |
+| S7-07 | Dry-run demo | Diễn thử kịch bản 3 test case trên bản live, fix lỗi cuối | 03/10 |
+| S7-08 | Buffer dự phòng | **Đừng tiêu trước** | 04/10 |
+| S7-09 | 🎯 **NỘP BÀI** | Source, PDF, slide, link demo, kết quả Turnitin | **05/10** |
 
-| ID | Công việc | Chi tiết |
-|----|-----------|----------|
-| S6-01 | Hoàn thiện Ch4 + viết Kết luận + hướng phát triển V2 (mobile, swap ca, payroll, multi-location) | — |
-| S6-02 | Tài liệu tham khảo (IEEE/APA, ≥10–15) + danh mục hình/bảng/viết tắt | — |
-| S6-03 | Phụ lục (HDSD Manager/Staff, mã nguồn auto-scheduler, ERD full, Swagger export, cài đặt) | — |
-| S6-04 | Mở đầu + Lời cảm ơn + Mục lục + review toàn bộ ≥50 trang (chính tả, format, citation) | — |
-| S6-05 | Kiểm tra Turnitin + chỉnh sửa nếu > 20% | Kết quả Turnitin |
-
-#### Tuần 17: Slide + demo + nộp
-
-| ID | Công việc | Chi tiết |
-|----|-----------|----------|
-| S6-06 | Tạo slide trình bày (15–20 slides: pain → giải pháp → kiến trúc → demo → kết quả) | File PPTX |
-| S6-07 | Dry-run demo (tập kịch bản 3 TC live, fix bug cuối) | Sẵn sàng |
-| S6-08 | **Buffer cuối kỳ** + dự phòng rủi ro (đừng tiêu trước!) | — |
-| S6-09 | **NỘP BÀI** (source, PDF, slide, link demo, Turnitin) | 🎯 DEADLINE CUỐI 27/09 |
-
-> **Mốc M7 (Tuần 17):** Nộp bài.
+**Definition of Done — M7 (04/10)**
+- [ ] Báo cáo ≥ 50 trang nội dung chính, định dạng thống nhất
+- [ ] Turnitin dưới ngưỡng cho phép
+- [ ] Slide + kịch bản demo đã diễn thử ít nhất một lượt trọn vẹn
 
 ---
 
-## PHẦN C: CẤU TRÚC BÁO CÁO CHI TIẾT
+## PHẦN C: THAM CHIẾU THIẾT KẾ (đã chốt)
 
-Tổng: ≥ 50 trang nội dung chính (từ Mở đầu đến Kết luận).
+> Phần này thay thế các khối ERD/API lỗi thời của bản 1.0. **Nguồn sự thật** vẫn là
+> [docs/erd.md](../docs/erd.md) và [docs/api/openapi.yaml](../docs/api/openapi.yaml) — nếu lệch, tin hai file đó.
 
----
+### C.1. ERD v2.0 — 11 bảng
 
-### Trang bìa
-- Tên trường, khoa, ngành
-- Tên đề tài: "GALAXY STAFF – Hệ thống Quản lý Nhân sự Rạp Chiếu Phim"
-- Họ tên sinh viên, MSSV
-- Giảng viên hướng dẫn
-- Tháng/Năm
+```
+locations                (id, name, address, created_at)
+users                    (id, email UK, password_hash, full_name, role,
+                          location_id FK, is_active, must_change_password, created_at, updated_at)
+availability_submissions (id, user_id FK, week_start, total_days, reason,
+                          submitted_at, updated_at)               UNIQUE(user_id, week_start)
+availabilities           (id, submission_id FK, day_of_week, start_time, end_time, created_at)
+shifts                   (id, location_id FK, work_date, week_start, start_at, end_at,
+                          assigned_user_id FK NULL, assignment_source, assigned_at,
+                          status, is_locked, unassigned_reason, override_reason,
+                          is_deleted, created_by FK, published_at, created_at, updated_at)
+shift_applications       (id, shift_id FK, user_id FK, status, has_conflict, conflict_note,
+                          reviewed_by FK, created_at, reviewed_at)
+shift_exchanges          (id, shift_id FK, from_user_id FK, to_user_id FK NULL, message,
+                          status, has_conflict, conflict_note, reviewed_by FK,
+                          created_at, taken_at, reviewed_at, cancelled_at, updated_at)
+news_posts               (id, author_id FK, title, content, is_deleted,
+                          created_at, updated_at, deleted_at, deleted_by FK)
+news_images              (id, post_id FK, image_url, sort_order)   UNIQUE(post_id, sort_order)
+news_reads               (id, post_id FK, user_id FK, read_at)     UNIQUE(post_id, user_id)
+notifications            (id, user_id FK, type, reference_id, reference_date,
+                          message, is_read, created_at)
+```
 
-### Lời cảm ơn (1 trang)
+**Bốn quy ước dễ code sai nhất** — dán lên màn hình khi làm Sprint 1 và 4:
 
-### Mục lục
+| # | Quy ước | Hậu quả nếu làm sai |
+|---|---------|---------------------|
+| 1 | `shifts` dùng `start_at`/`end_at` TIMESTAMPTZ, **không** dùng date + start_time + end_time | Ca 18h→2h có `end_time < start_time` làm sai mọi phép tính giờ và bị CHECK constraint từ chối |
+| 2 | **Open-shift** = `assigned_user_id IS NULL`, **không** phải `status = 'open'` | `shift_status` chỉ có `draft`/`published`; không biểu diễn được "ca trống nhưng lịch đã publish" mà FR-ROSTER-09 cần |
+| 3 | Khóa khi trao đổi dùng cột `is_locked`, không nhét vào `status` | Hai khái niệm "đã phân công chưa" và "đã công bố chưa" có thể cùng đúng một lúc → phải là hai cột |
+| 4 | So sánh giờ ở `availabilities` phải qua `op_minute()` | `02:00 < 18:00` theo kiểu TIME, so sánh trực tiếp luôn cho kết quả sai |
 
-### Danh mục hình ảnh
+### C.2. API — 45 endpoint / 36 path
 
-### Danh mục bảng biểu
+```
+System (1)
+  GET    /health
 
-### Danh mục từ viết tắt
-- JWT, RBAC, REST, API, CRUD, ORM, SRS, ERD, CI/CD, WebSocket...
+Auth (5)                              Users (5)
+  POST   /api/auth/login                GET    /api/users
+  POST   /api/auth/refresh              GET    /api/users/{id}
+  GET    /api/auth/me                   PUT    /api/users/{id}
+  PUT    /api/auth/change-password      PATCH  /api/users/{id}/status
+  POST   /api/auth/register             POST   /api/users/{id}/reset-password
 
----
+Availabilities (4)                    Shifts (9)
+  GET    /api/availabilities            GET    /api/shifts
+  POST   /api/availabilities            GET    /api/shifts/{id}
+  GET    /api/availabilities/overview   POST   /api/shifts
+  GET    /api/availabilities/stats      PUT    /api/shifts/{id}
+                                        DELETE /api/shifts/{id}
+Shift Applications (4)                  POST   /api/shifts/auto-schedule
+  GET    /api/shift-applications         POST   /api/shifts/auto-schedule/reset
+  PUT    /api/shift-applications/{id}/approve   POST /api/shifts/publish
+  PUT    /api/shift-applications/{id}/reject    POST /api/shifts/{id}/apply
+  DELETE /api/shift-applications/{id}
 
-### MỞ ĐẦU (3–4 trang)
-1. **Lý do chọn đề tài**: Thực trạng quản lý nhân sự thủ công tại rạp chiếu phim, bất cập của Google Sheets + Messenger.
-2. **Mục tiêu đề tài**: Xây dựng hệ thống web tập trung, số hóa quy trình, tự động xếp ca.
-3. **Đối tượng và phạm vi nghiên cứu**: Quy trình xếp ca tại rạp chiếu phim; phạm vi 4 module; 1 location.
-4. **Phương pháp nghiên cứu**: Agile, incremental development, khảo sát thực tế, tham khảo hệ thống tương tự.
-5. **Bố cục báo cáo**: Tóm tắt nội dung từng chương.
+Exchanges (6)                         News (8)
+  GET    /api/exchanges                 GET    /api/news
+  POST   /api/exchanges                 POST   /api/news
+  DELETE /api/exchanges/{id}            POST   /api/news/images
+  POST   /api/exchanges/{id}/take       GET    /api/news/{id}
+  PUT    /api/exchanges/{id}/approve    PUT    /api/news/{id}
+  PUT    /api/exchanges/{id}/reject     DELETE /api/news/{id}
+                                        POST   /api/news/{id}/read
+Notifications (3)                       GET    /api/news/{id}/reads
+  GET    /api/notifications
+  PUT    /api/notifications/{id}/read   WebSocket (không mô tả được bằng OpenAPI 3.0)
+  PUT    /api/notifications/read-all      WS   /ws/notifications?token=
+```
 
----
+> **Bẫy khai báo route trong FastAPI**: đăng ký đường dẫn tĩnh **trước** đường dẫn có tham số.
+> Ba chỗ dính: `/api/shifts/auto-schedule` (trước `/{id}`), `/api/notifications/read-all`
+> (trước `/{id}/read`), `/api/news/images` (trước `/{id}`).
 
-### CHƯƠNG 2: CƠ SỞ LÝ THUYẾT VÀ CÔNG NGHỆ (10–15 trang)
+### C.3. Cấu trúc thư mục
 
-#### 2.1. Tổng quan về quản lý nhân sự trong ngành dịch vụ (2–3 trang)
-- Đặc thù nhân sự ngành rạp chiếu phim: ca kíp linh hoạt, part-time, peak hour.
-- Các vấn đề thường gặp: xếp ca thủ công, giao tiếp phân tán, thiếu công cụ tập trung.
-- Khảo sát quy trình hiện tại (mô tả Google Sheets + Messenger workflow).
-
-#### 2.2. Các giải pháp/hệ thống tương tự (2–3 trang)
-- **When2Meet**: Ưu điểm (giao diện grid trực quan), hạn chế (chỉ thu thập lịch rảnh, không xếp ca).
-- **Deputy / 7shifts / Homebase**: Phần mềm chuyên nghiệp quản lý ca, ưu/nhược điểm, chi phí.
-- **Google Sheets**: Ưu điểm (miễn phí, quen thuộc), hạn chế (thủ công, dễ sai, không real-time).
-- So sánh và rút ra yêu cầu cho Galaxy Staff.
-
-#### 2.3. Kiến trúc phần mềm đa tầng (2 trang)
-- Multi-tier Architecture: Presentation – Business Logic – Data.
-- RESTful API: Nguyên tắc thiết kế, HTTP methods, status codes.
-- Microservice vs Monolith: Lý do chọn Monolith cho đồ án cá nhân.
-
-#### 2.4. Công nghệ sử dụng (3–4 trang)
-- **React.js + TypeScript**: Component-based, type safety, hệ sinh thái.
-- **Tailwind CSS + shadcn/ui**: Utility-first CSS, responsive design.
-- **FastAPI (Python)**: Async-first, auto Swagger, Pydantic validation.
-- **PostgreSQL + SQLAlchemy + Alembic**: ORM, migration, constraint.
-- **JWT + bcrypt + RBAC**: Cơ chế xác thực và phân quyền.
-- **WebSocket**: Real-time notification trong web app.
-- **Docker + Docker Compose**: Containerization, deployment.
-
-#### 2.5. Thuật toán Auto-Scheduling (2 trang)
-- Bài toán Constraint Satisfaction Problem (CSP).
-- Cách tiếp cận Rules-based greedy: mô tả thuật toán, pseudocode.
-- So sánh với các phương pháp khác (ILP, Genetic Algorithm) và lý do chọn greedy.
-
----
-
-### CHƯƠNG 3: PHÂN TÍCH VÀ THIẾT KẾ HỆ THỐNG (15–20 trang)
-
-#### 3.1. Phương pháp và công cụ (2 trang)
-- Quy trình Agile cá nhân, Sprint planning.
-- Công cụ: VS Code, Figma, draw.io, GitHub, Docker, Postman/Swagger.
-- Quản lý task: GitHub Projects / Notion.
-
-#### 3.2. Phân tích yêu cầu (4–5 trang)
-- **Yêu cầu chức năng**: Bảng liệt kê 4 module (F1.1–F4.3) + mô tả.
-- **Yêu cầu phi chức năng**: Bảo mật, hiệu năng, khả năng mở rộng.
-- **Use Case Diagram**: Tổng quan + chi tiết cho từng module.
-- **Activity Diagram**: 3–4 luồng chính (đăng ký lịch rảnh, auto-schedule, pass ca, tạo thông báo).
-
-#### 3.3. Thiết kế cơ sở dữ liệu (3–4 trang)
-- ERD tổng thể (Entity-Relationship Diagram).
-- Chi tiết từng bảng: tên cột, kiểu dữ liệu, constraint, index.
-- Giải thích quan hệ giữa các bảng.
-- Lý do thiết kế: chuẩn hóa, foreign key, status enum.
-
-#### 3.4. Thiết kế API (3–4 trang)
-- Cấu trúc RESTful API: naming convention, response format.
-- Bảng liệt kê endpoint: method, URL, request body, response, quyền truy cập.
-- Cơ chế xác thực: JWT flow (login → token → header → middleware).
-- Cơ chế phân quyền: RBAC (Manager vs Staff).
-
-#### 3.5. Thiết kế giao diện (3–4 trang)
-- Wireframe/Mockup cho các màn hình chính:
-  - Login
-  - Dashboard (Manager / Staff)
-  - Availability Grid
-  - Roster View (ngày/tuần)
-  - Shift Exchange Board
-  - News Feed
-  - Notification Panel
-- Responsive design strategy: Desktop-first cho Manager, Mobile-friendly cho Staff.
-
-#### 3.6. Thiết kế thuật toán Auto-Scheduling (2 trang)
-- Input/Output specification.
-- Flowchart thuật toán.
-- Constraint rules chi tiết.
-- Phân tích độ phức tạp.
-
----
-
-### CHƯƠNG 4: KẾT QUẢ VÀ THẢO LUẬN (10–15 trang)
-
-#### 4.1. Kết quả triển khai (5–6 trang)
-- **Module Authentication**: Screenshot login, phân quyền, Swagger.
-- **Module Availability**: Screenshot grid, deadline, tổng hợp Manager.
-- **Module Roster**: Screenshot lịch ngày/tuần, auto-schedule result, publish.
-- **Module Shift Exchange**: Screenshot pass ca, nhận ca, approve/reject.
-- **Module News Feed**: Screenshot tạo bài, danh sách, seen tracking.
-- **Notification**: Screenshot in-app notification.
-
-#### 4.2. Kết quả kiểm thử (3–4 trang)
-- **Unit test**: Bảng kết quả test case API (pass/fail, coverage).
-- **Integration test**: 3 test case nghiệm thu với kết quả.
-- **Responsive test**: Screenshot trên các kích thước (375px, 414px, 768px, desktop).
-- **Performance test**: Kết quả stress test, thời gian phản hồi API, auto-schedule benchmark.
-
-#### 4.3. Thảo luận và đánh giá (2–3 trang)
-- So sánh kết quả với tiêu chí thành công đề ra.
-- Đánh giá ưu điểm: những gì đạt được tốt.
-- Đánh giá hạn chế: những gì chưa hoàn thiện, lý do.
-- Bài học kinh nghiệm từ quá trình phát triển.
+```
+GALAXY_STAFF/
+├── backend/
+│   ├── app/
+│   │   ├── api/          auth · users · availabilities · shifts
+│   │   │                 shift_applications · exchanges · news · notifications
+│   │   ├── core/         config.py · database.py · security.py · deps.py
+│   │   ├── models/       (11 bảng theo ERD v2.0)
+│   │   ├── schemas/      (Pydantic, ánh xạ 1-1 với components.schemas của OpenAPI)
+│   │   ├── services/     auto_scheduler.py · notification_service.py
+│   │   ├── tests/        conftest.py + test_<module>.py
+│   │   └── main.py
+│   ├── alembic/          versions/
+│   ├── uploads/          (ảnh News — không commit)
+│   ├── Dockerfile · requirements.txt · pyproject.toml
+├── frontend/
+│   ├── src/              components/ pages/ hooks/ services/ stores/ types/ lib/
+│   ├── Dockerfile · package.json
+├── docker/postgres/init/ 01-init.sql
+├── docs/
+│   ├── requirements/     55 FR · 39 NFR · 14 UC · chapter3-requirements.md
+│   ├── diagrams/         6 UCD · 4 Activity · 12 Sequence · out/ (PNG export)
+│   ├── api/              openapi.yaml · README.md
+│   ├── erd.md · git-workflow.md
+├── about-project/        charter · description · instruction · tracker · workspace
+├── docker-compose.yml · .env.example · README.md · CLAUDE.md
+```
 
 ---
 
-### KẾT LUẬN (1–2 trang)
-- Tóm tắt kết quả đạt được.
-- Đóng góp của đề tài.
-- Hạn chế và hướng phát triển: Native mobile app (Flutter), Swap ca 2 chiều, Push notification FCM, Payroll module, Multi-location, AI-based scheduling (machine learning).
+## PHẦN D: CẤU TRÚC BÁO CÁO
+
+Tổng ≥ 50 trang nội dung chính (Mở đầu → Kết luận). Cột cuối ghi **sprint nào viết phần nào** — bám theo đó thì không bị dồn.
+
+| Phần | Nội dung | Số trang | Viết ở |
+|------|----------|----------|--------|
+| Trang bìa, Lời cảm ơn, Mục lục, Danh mục hình/bảng/viết tắt | — | ~6 | S7 |
+| **MỞ ĐẦU** | Lý do chọn đề tài · Mục tiêu · Đối tượng & phạm vi · Phương pháp · Bố cục | 3–4 | S7 |
+| **CHƯƠNG 1** | Tổng quan đề tài, bài toán thực tế tại rạp | 3–5 | S2 |
+| **CHƯƠNG 2** | Cơ sở lý thuyết & công nghệ | 10–15 | **S2** |
+| **CHƯƠNG 3** | Phân tích & thiết kế hệ thống | 15–20 | S2→S4 |
+| **CHƯƠNG 4** | Kết quả & thảo luận | 10–15 | **S6** |
+| **KẾT LUẬN** | Kết quả · đóng góp · hạn chế · hướng phát triển | 1–2 | S7 |
+| Tài liệu tham khảo · Phụ lục A–F | — | — | S7 |
+
+### Chương 2 — Cơ sở lý thuyết và công nghệ (10–15 trang)
+- **2.1** Quản lý nhân sự ngành dịch vụ: đặc thù rạp chiếu phim (ca kíp linh hoạt, part-time, giờ cao điểm), vấn đề của quy trình Google Sheets + Messenger
+- **2.2** Hệ thống tương tự: When2Meet (grid trực quan nhưng không xếp ca), Deputy / 7shifts / Homebase (chuyên nghiệp nhưng tốn phí), Google Sheets — so sánh rồi rút ra yêu cầu
+- **2.3** Kiến trúc đa tầng: Presentation – Business – Data; nguyên tắc REST; vì sao chọn Monolith
+- **2.4** Công nghệ: React + TS, Tailwind + shadcn/ui, FastAPI, PostgreSQL + SQLAlchemy + Alembic, JWT + bcrypt + RBAC, WebSocket, Docker
+- **2.5** Bài toán xếp ca như một Constraint Satisfaction Problem: cách tiếp cận greedy, so sánh với ILP và Genetic Algorithm, lý do chọn greedy
+
+### Chương 3 — Phân tích và thiết kế (15–20 trang)
+- **3.1** Phương pháp & công cụ *(S2)* — Personal Scrum, Git Flow, Notion, draw.io, Figma
+- **3.2** Phân tích yêu cầu *(S2)* — **55 FR** trên 5 module, **39 NFR** trên 7 nhóm, **14 UC**, 6 Use Case Diagram, 4 Activity Diagram
+- **3.3** Thiết kế cơ sở dữ liệu *(S3)* — ERD **11 bảng**, chi tiết cột/ràng buộc/index, phân tích 3NF, **17 quyết định thiết kế kèm lý do** (mục 9 của erd.md — phần đáng giá nhất khi bảo vệ)
+- **3.4** Thiết kế API *(S4)* — quy ước REST, **45 endpoint**, luồng JWT, ma trận RBAC, 12 Sequence Diagram
+- **3.5** Thiết kế giao diện *(S3–S4)* — wireframe 8 màn hình, chiến lược responsive (desktop-first cho Manager, mobile-friendly cho Staff)
+- **3.6** Thuật toán Auto-Scheduling *(S4)* — input/output, lưu đồ, ràng buộc C1–C5, độ phức tạp
+
+### Chương 4 — Kết quả và thảo luận (10–15 trang)
+- **4.1** Kết quả triển khai — ảnh chụp 5 module + Swagger
+- **4.2** Kết quả kiểm thử — bảng unit test + 3 test case nghiệm thu + responsive + hiệu năng
+- **4.3** Thảo luận — đối chiếu với tiêu chí đề ra; **hai đợt audit thiết kế** (20 lỗi ERD + 8 lỗ hổng API) là chất liệu tốt cho phần bài học kinh nghiệm; hạn chế đã biết: không có audit log, JWT không thu hồi được, tỉ lệ đọc không snapshot, chỉ 1 rạp, không kéo-thả ở Roster
 
 ---
 
-### TÀI LIỆU THAM KHẢO
-- Tối thiểu 10–15 tài liệu.
-- Gợi ý: FastAPI docs, React docs, PostgreSQL docs, JWT RFC 7519, sách Software Engineering (Sommerville), bài báo về employee scheduling, tài liệu When2Meet/Deputy.
+## PHẦN E: QUẢN TRỊ RỦI RO
+
+### E.1. Sổ rủi ro
+
+| # | Rủi ro | Khả năng | Ảnh hưởng | Phòng ngừa | Dấu hiệu kích hoạt |
+|---|--------|----------|-----------|------------|--------------------|
+| R1 | Drag-to-paint (S3-06) ngốn quá nhiều thời gian | Cao | Trễ M3 | Đã có đặc tả tương tác từ S1-09 trước khi code | Hết 23/08 mà lưới chưa tô được ô nào |
+| R2 | Auto-schedule sai vì quy đổi TIMESTAMPTZ ↔ TIME | Cao | Sai kết quả TC1 | Viết test cho `op_minute()` **trước** khi viết thuật toán | Ca tối bị bỏ sót khi gán |
+| R3 | Deploy Render lỗi vì khác môi trường | Trung bình | Trễ M6 | Đã deploy slice từ S2 (16/08), không dồn về cuối | Smoke test trên live thất bại |
+| R4 | Turnitin vượt 20% | Trung bình | Trễ nộp | Viết bằng lời mình, paraphrase mọi tài liệu tham khảo | Kết quả lần quét đầu > 20% |
+| R5 | WebSocket không ổn định trên free tier | Trung bình | Mất tính năng real-time | Đã thiết kế sẵn fallback polling 30s (BR-NW-08) | Kết nối rớt liên tục khi test live |
+| R6 | Báo cáo dồn vào tuần cuối | Cao | Không đủ 50 trang | Mỗi sprint có task viết chương tương ứng, tính vào Definition of Done | Kết thúc sprint mà chương tương ứng chưa có draft |
+| R7 | Quá tải sát deadline 18h Thứ 7 | Thấp | Staff không lưu được lịch | Stress test ở S6-06 | Thời gian phản hồi API vượt 1 giây khi test tải |
+
+### E.2. Thứ tự cắt nếu chạm điểm kiểm tra mà chưa xong
+
+Cắt **theo đúng thứ tự này**, cắt xong ghi ngay vào mục "Hạn chế" của báo cáo:
+
+| Ưu tiên cắt | Hạng mục | Tiết kiệm | Điểm kiểm tra |
+|-------------|----------|-----------|---------------|
+| 1 | Stress test (S6-06) | ~2 ngày | 25/09 |
+| 2 | WebSocket → polling 30s | ~3 ngày | 09/08 (trước khi làm S2-09) |
+| 3 | Countdown deadline real-time (Could Have) | ~1 ngày | 28/08 |
+| 4 | Day view của Roster, chỉ giữ Week view | ~2 ngày | 10/09 |
+| 5 | **Shift Exchange → Version 2** | ~1 tuần | **13/09 — nếu M4 chưa đạt thì cắt ngay, không do dự** |
+
+> Điểm kiểm tra quan trọng nhất là **13/09 (M4)**. Đến ngày đó mà CORE MVP chưa feature-complete thì bỏ hẳn Shift Exchange và dùng Tuần 8 cho kiểm thử. Thiết kế của module này đã hoàn chỉnh (FR + Sequence + ERD + 6 endpoint đặc tả) nên **vẫn viết được trọn vẹn vào phần thiết kế của báo cáo dù không code** — mất tính năng nhưng không mất trang báo cáo.
+
+### E.3. Nguyên tắc làm việc
+
+**Thời gian**
+- **80/20**: chức năng cốt lõi chạy ổn định hơn là nhiều chức năng chạy lỗi.
+- **Timeboxing**: kẹt quá 4 giờ → đơn giản hóa hoặc chuyển việc khác, đừng cố đấm.
+- **Báo cáo viết song song**: mỗi sprint xong là chương tương ứng phải có draft. Đây là điều kiện của Definition of Done, không phải lời khuyên.
+
+**Kỹ thuật**
+- **Seed data sớm** (S1-04): có dữ liệu từ Tuần 1 thì test và demo dễ hơn hẳn.
+- **Chụp màn hình ngay** khi xong tính năng. Đừng đợi cuối kỳ — lúc đó giao diện đã đổi, dữ liệu đã khác.
+- **Swagger là tài liệu miễn phí**: FastAPI tự sinh, tận dụng cho Phụ lục E.
+- **Viết test ngay sau khi code**, không để dồn. Mỗi endpoint tối thiểu 3 ca: success, validation, auth.
+- **Nhật ký lỗi**: mọi bug mất hơn 1 giờ để tìm ra đều ghi vào mục "Lỗi đã gặp & cách fix" của `CLAUDE.local.md` — đây là chất liệu trực tiếp cho Chương 4.3.
+
+**Báo cáo**
+- **Hình ảnh = trang**: mỗi ảnh kèm chú thích chiếm khoảng 1/3 trang, mỗi sơ đồ khoảng 1/2 trang.
+- **Trích dẫn đủ**: mỗi công nghệ, mỗi khái niệm lý thuyết đều cần nguồn, theo IEEE hoặc APA.
+- **Turnitin**: viết bằng lời của mình. Không copy-paste từ tài liệu gốc.
 
 ---
 
-### PHỤ LỤC
-- **Phụ lục A**: Hướng dẫn cài đặt và sử dụng hệ thống (docker-compose up).
-- **Phụ lục B**: Hướng dẫn sử dụng cho Manager.
-- **Phụ lục C**: Hướng dẫn sử dụng cho Staff.
-- **Phụ lục D**: Mã nguồn thuật toán Auto-Scheduling.
-- **Phụ lục E**: Swagger API Documentation (screenshot hoặc export).
-- **Phụ lục F**: Kết quả kiểm tra Turnitin.
+## PHẦN F: NHẬT KÝ THAY ĐỔI KẾ HOẠCH
+
+### Bản 2.0 — 26/07/2026: tái lập mốc
+
+| Thay đổi | Bản 1.0 | Bản 2.0 | Lý do |
+|----------|---------|---------|-------|
+| Hạn nộp | 27/09/2026 | **05/10/2026** | Mốc mới nhất từ phía nhà trường |
+| Xung đột timeline | `charter.md` và `CLAUDE.md` ghi 8 tuần (kết thúc cuối T7), `tracker.md` ghi 17 tuần | Đồng bộ toàn bộ về **05/10/2026** | Ba tài liệu ghi ba mốc khác nhau, không thể lập kế hoạch trên nền mâu thuẫn |
+| Cấu trúc sprint | 7 sprint / 17 tuần, tính từ 01/06 | 7 sprint / **10 tuần thi công**, tính từ 27/07 | Giai đoạn thiết kế đã tiêu hết phần thời gian trước 26/07 |
+| Khối ERD trong tài liệu | 8 bảng, `availabilities.status`, `shifts.date+start_time+end_time`, `news_posts.image_url` | **11 bảng** đúng ERD v2.0 | Bản cũ chính là thiết kế **đã bị bác bỏ** trong đợt audit. Copy vào báo cáo sẽ mâu thuẫn với Chương 3.3 |
+| Khối API trong tài liệu | ~32 endpoint | **45 endpoint** | Thiếu toàn bộ nhóm đơn xin ca, reset auto-schedule, upload ảnh, healthcheck |
+| Kéo-thả xếp ca ở Roster | Must Have | **Won't Have → V2** | Cắt để dồn thời gian cho auto-schedule. Click ô → form vẫn cho ra đúng kết quả nghiệp vụ |
+| Sprint Availability | 3 tuần | 2 tuần | Backend rút ngắn được vì API đã đặc tả xong hoàn toàn từ trước |
+| Sprint Roster | 3 tuần | 2 tuần | Nhờ cắt kéo-thả |
+| Sprint Exchange | 2 tuần | 1 tuần | Thiết kế đã trọn vẹn, và là lần thứ ba lặp mẫu CRUD + approve/reject |
+| Definition of Done | Không có | Có, cho từng sprint | Tránh tự đánh lừa bằng trạng thái "gần xong" |
+| Sổ rủi ro | 1 dòng | 7 rủi ro + cut-list kèm ngày kiểm tra | Kế hoạch nén thì phải biết trước sẽ cắt gì và cắt lúc nào |
+
+### Đánh giá độ khả thi
+
+Khối lượng còn lại theo bản 1.0 là khoảng 14 tuần công việc, nay phải gói trong 10 tuần. Ba nguồn bù đắp:
+
+1. **Thiết kế đã xong 100%** — ERD, 45 endpoint, 12 sequence diagram đều đã chốt. Bản 1.0 giả định vừa code vừa thiết kế; giờ chỉ còn hiện thực hóa.
+2. **Cắt kéo-thả ở Roster** — tiết kiệm khoảng 1 tuần ở đúng chỗ khó.
+3. **Chương 3 gần như đã viết sẵn** — `docs/requirements/`, `docs/erd.md`, `docs/api/README.md` là bản thảo trực tiếp cho các mục 3.2–3.4. Việc còn lại là biên tập, không phải viết mới.
+
+**Vẫn còn căng ở hai chỗ**: Sprint 5 nén Shift Exchange xuống 1 tuần, và Sprint 7 chỉ có 1 tuần cho khâu hoàn thiện báo cáo. Cả hai đã có phương án đối phó — cut-list mục E.2 và quy tắc viết báo cáo song song từng sprint.
 
 ---
 
-## PHẦN D: CHECKLIST TỔNG THỂ
-
-### Checklist theo tuần
-
-- [ ] **Tuần 1–3 (Sprint 0)**: 14 Use Case, ERD, API Spec, SRS, Wireframe + thiết kế drag-drop; Git/Docker/scaffold BE+FE; DB migration; prototype; Chương 2 draft
-- [ ] **Tuần 4–5 (Sprint 1)**: Auth API+UI, News Feed API+UI, Notification WebSocket, unit test, deploy slice sớm, Chương 3.1–3.2 draft
-- [ ] **Tuần 6–8 (Sprint 2)**: Availability API + grid kéo-thả + Overlap view + Template-shift + deadline/min-5, test, Chương 3.3 draft
-- [ ] **Tuần 9–11 (Sprint 3)**: Shifts API, Auto-Scheduling engine, Roster day/week + kéo-thả xếp ca, publish, apply open-shift, cảnh báo xung đột, Chương 3.4+3.6
-- [ ] **Tuần 12–13 (Sprint 4)**: Shift Exchange API + UI, concurrency, approve/reject, rà soát notification, Chương 3 hoàn thiện
-- [ ] **Tuần 14–15 (Sprint 5)**: Unit test ≥20, 3 Integration TC, responsive fix, stress test, deploy hoàn chỉnh, mock data, polish, Chương 4 draft
-- [ ] **Tuần 16–17 (Sprint 6)**: Kết luận + TLTK + Phụ lục, Turnitin, Slide (15–20), dry-run demo, **nộp bài**
-
-### Checklist sản phẩm đầu ra
-
-- [ ] Source code trên GitHub (có README đầy đủ)
-- [ ] docker-compose.yml chạy được 1 lệnh
-- [ ] Live demo URL (Render/Railway)
-- [ ] Mock data: 1 Manager + 12 Staff
-- [ ] Báo cáo PDF ≥ 50 trang
-- [ ] Slide trình bày 15–20 slides
-- [ ] Swagger API Documentation (tại /docs)
-- [ ] Kết quả Turnitin
-- [ ] Video demo (nếu yêu cầu)
-
----
-
-## PHẦN E: MẸO VÀ LƯU Ý CHO DỰ ÁN CÁ NHÂN
-
-### Quản lý thời gian
-- **Nguyên tắc 80/20**: 80% giá trị đến từ 20% tính năng. Ưu tiên chức năng cốt lõi chạy ổn định hơn là nhiều tính năng chạy lỗi.
-- **Timeboxing**: Mỗi tính năng có deadline cứng. Nếu bị kẹt > 4h, đơn giản hóa hoặc chuyển sang tính năng khác.
-- **Viết báo cáo song song**: Không để dồn tuần cuối. Mỗi sprint xong, viết luôn phần tương ứng trong báo cáo.
-
-### Kỹ thuật
-- **Seed data sớm**: Tạo script seed 12 staff + lịch rảnh + ca mẫu từ tuần 3, giúp test và demo dễ dàng.
-- **Screenshot mọi thứ**: Mỗi khi hoàn thành tính năng, chụp ngay cho báo cáo. Đừng đợi tuần cuối.
-- **Swagger = doc miễn phí**: FastAPI tự tạo Swagger UI, tận dụng triệt để cho tài liệu API.
-- **Fallback plan**: Nếu drag-and-drop quá phức tạp → dùng form + dropdown. Nếu WebSocket khó → dùng polling. Ghi nhận trong báo cáo phần "Hạn chế".
-
-### Báo cáo
-- **Hình ảnh = trang**: Mỗi screenshot + caption chiếm ~1/3 trang. Diagram chiếm ~1/2 trang. Tận dụng để đạt ≥ 50 trang.
-- **Trích dẫn đủ**: Mỗi công nghệ, mỗi khái niệm lý thuyết cần có citation. Dùng định dạng IEEE hoặc APA.
-- **Turnitin**: Viết bằng lời của mình, không copy-paste từ docs. Paraphrase khi tham khảo.
+*Tài liệu này là kế hoạch triển khai chính thức của dự án. Khi có xung đột với `charter.md` hoặc `CLAUDE.md`, lấy tài liệu này làm chuẩn và cập nhật lại hai file kia.*

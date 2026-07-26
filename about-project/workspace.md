@@ -52,8 +52,8 @@ galaxy-staff/
 # Galaxy Staff — Hệ thống Quản lý Nhân sự Rạp Chiếu Phim
 
 ## Dự án
-- Đồ án cá nhân đại học, 8 tuần (T6–T7/2026), mục tiêu điểm cao nhất
-- 1 người làm, dùng Personal Scrum (4 sprint × 2 tuần)
+- Đồ án cá nhân đại học, hạn nộp 05/10/2026, mục tiêu điểm cao nhất
+- 1 người làm, dùng Personal Scrum (7 sprint — xem about-project/tracker.md)
 - Demo + Báo cáo ≥ 50 trang (.docx)
 
 ## Tech Stack

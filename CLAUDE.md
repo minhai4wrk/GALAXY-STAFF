@@ -1,9 +1,11 @@
 # Galaxy Staff — Hệ thống Quản lý Nhân sự Rạp Chiếu Phim
 
 ## Dự án
-- Đồ án cá nhân đại học, 8 tuần (T6–T7/2026), mục tiêu điểm cao nhất
-- 1 người làm, dùng Personal Scrum (4 sprint × 2 tuần)
+- Đồ án cá nhân đại học, **hạn nộp 05/10/2026**, mục tiêu điểm cao nhất
+- Thiết kế xong 26/07/2026 · Thi công 27/07 → 04/10/2026 (10 tuần, 7 sprint)
+- 1 người làm, dùng Personal Scrum
 - Demo + Báo cáo ≥ 50 trang (.docx)
+- Kế hoạch chi tiết: `about-project/tracker.md` (bản 2.0 — tài liệu chuẩn khi có xung đột mốc)
 
 ## Tech Stack
 - **Backend**: Python 3.11 + FastAPI + SQLAlchemy 2.0 + Alembic + PostgreSQL 16
@@ -90,11 +92,19 @@ Quy ước QUAN TRỌNG khi code (dễ sai nhất):
 4. Dùng shadcn/ui components, KHÔNG tự viết từ đầu
 5. Responsive: Desktop-first cho Manager, Mobile-friendly cho Staff
 
-## Sprint Timeline
-- Sprint 0 (Tuần 1-2): Thiết kế + Setup
-- Sprint 1 (Tuần 3-4): Auth + Availability + News Feed
-- Sprint 2 (Tuần 5-6): Roster + Auto-Schedule + Shift Exchange
-- Sprint 3 (Tuần 7-8): Test + Polish + Báo cáo + Deploy
+## Sprint Timeline (bản 2.0 — hạn nộp 05/10/2026)
+| Sprint | Nội dung | Ngày |
+|--------|----------|------|
+| S0 ✅ | Phân tích + Thiết kế (55 FR, ERD 11 bảng, OpenAPI 45 endpoint) | → 26/07 |
+| S1 | Nền tảng: models + Alembic + seed + scaffold FE + README | 27/07 – 02/08 |
+| S2 | Auth + News Feed + Notification + deploy slice | 03/08 – 16/08 |
+| S3 | Availability (grid kéo-thả + Overlap view) | 17/08 – 30/08 |
+| S4 | Roster + Auto-Schedule → **CORE MVP** | 31/08 – 13/09 |
+| S5 | Shift Exchange | 14/09 – 20/09 |
+| S6 | Kiểm thử + Responsive + Deploy | 21/09 – 27/09 |
+| S7 | Báo cáo + Slide + Nộp | 28/09 – 04/10 |
+
+⚠️ Đã cắt khỏi V1: **kéo-thả xếp ca ở Roster** (dùng form/modal). Vẫn giữ kéo-thả ở Availability.
 
 ## Nhắc nhở quan trọng
 - Mỗi tính năng bị kẹt > 4h → đơn giản hóa, hỏi Claude
