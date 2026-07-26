@@ -1,0 +1,27 @@
+# ---------- Web framework ----------
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20        # upload ảnh cho News
+
+# ---------- Database ----------
+sqlalchemy==2.0.36
+alembic==1.14.0
+psycopg2-binary==2.9.10
+
+# ---------- Validation / Config ----------
+pydantic[email]==2.10.4
+pydantic-settings==2.7.0
+
+# ---------- Auth ----------
+python-jose[cryptography]==3.3.0
+passlib==1.7.4
+# Pin 4.0.1: passlib 1.7.4 đọc bcrypt.__about__ nên bcrypt >= 4.1 sẽ spam warning
+bcrypt==4.0.1
+
+# ---------- Test ----------
+pytest==8.3.4
+pytest-asyncio==0.25.0
+httpx==0.28.1
+
+# ---------- Lint ----------
+ruff==0.8.4
