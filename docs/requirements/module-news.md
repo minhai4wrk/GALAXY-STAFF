@@ -39,7 +39,13 @@ Thông báo tự động (in-app) được gửi khi có sự kiện quan trọn
 | **Kết quả mong đợi** | - Đăng thành công: bài xuất hiện đầu feed, notification gửi cho tất cả Staff. <br> - Thiếu tiêu đề: validation error. <br> - Ảnh quá lớn (> 5MB): lỗi "Kích thước ảnh vượt quá giới hạn". |
 | **Mức ưu tiên** | **Must** |
 
-**API:** `POST /api/news`
+**API:** `POST /api/news/images` (upload từng ảnh, trả về `image_url`) → `POST /api/news` (tạo bài, truyền danh sách URL vào `image_urls`)
+
+> Upload tách thành bước riêng vì BR-NW-04 cho tối đa 3 ảnh và mỗi ảnh tối đa 5MB:
+> nhồi cả 3 ảnh vào một request multipart cùng tiêu đề/nội dung thì chỉ cần một ảnh lỗi
+> là mất trắng toàn bộ bài đang soạn. Tách ra thì Manager upload xong ảnh nào chắc ảnh đó.
+> Endpoint upload vốn bị thiếu ở bản 1.0 của tài liệu (bảng `news_images` đã có trong ERD
+> nhưng không có đường nào đưa ảnh lên) — xem [docs/api/README.md](../api/README.md) mục 4.
 
 ---
 
@@ -250,6 +256,7 @@ Thông báo tự động (in-app) được gửi khi có sự kiện quan trọn
 |--------|----------|-------|-------|-----|
 | `GET` | `/api/news` | Danh sách bài viết | Authenticated | FR-NEWS-02 |
 | `POST` | `/api/news` | Tạo bài mới | Manager | FR-NEWS-01 |
+| `POST` | `/api/news/images` | Upload ảnh đính kèm (≤ 5MB, JPEG/PNG/WebP) | Manager | FR-NEWS-01, BR-NW-04 |
 | `GET` | `/api/news/{id}` | Chi tiết bài | Authenticated | FR-NEWS-03 |
 | `PUT` | `/api/news/{id}` | Sửa bài | Manager | FR-NEWS-04 |
 | `DELETE` | `/api/news/{id}` | Xóa bài | Manager | FR-NEWS-05 |
@@ -258,6 +265,15 @@ Thông báo tự động (in-app) được gửi khi có sự kiện quan trọn
 | `GET` | `/api/notifications` | Danh sách notification | Authenticated | FR-NOTIF-01 |
 | `PUT` | `/api/notifications/{id}/read` | Mark 1 notification read | Authenticated | FR-NOTIF-02 |
 | `PUT` | `/api/notifications/read-all` | Mark all read | Authenticated | FR-NOTIF-02 |
+
+> **Đặc tả đầy đủ** (request/response body, mã lỗi, ví dụ): [docs/api/openapi.yaml](../api/openapi.yaml).
+>
+> WebSocket `WS /ws/notifications?token=` (FR-NOTIF-06) không nằm trong bảng trên vì
+> OpenAPI 3.0 không mô tả được giao thức WebSocket — đã ghi trong phần mô tả của spec.
+>
+> Khi khai báo router FastAPI, đặt `/api/news/images` **trước** `/api/news/{id}` và
+> `/api/notifications/read-all` **trước** `/api/notifications/{id}/read`, nếu không đường dẫn
+> tĩnh sẽ bị route tham số nuốt mất và báo lỗi ép kiểu int.
 
 ---
 

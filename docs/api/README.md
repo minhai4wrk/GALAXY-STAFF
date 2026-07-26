@@ -145,8 +145,12 @@ nên lộ ra **8 chỗ tài liệu yêu cầu mô tả hành vi nhưng chưa có
 *"client gọi API nào?"* và lại lòi ra 8 chỗ. Đọc xuôi tài liệu rồi đoán xem thiếu gì thì không
 bao giờ phát hiện được.
 
-> **Việc cần làm**: bổ sung 8 endpoint này vào bảng "Tổng hợp API Endpoints" của
-> `module-roster.md` và `module-news.md` để tài liệu yêu cầu khớp với spec.
+> ✅ **Đã đồng bộ ngược vào tài liệu yêu cầu** (26/07/2026): bảng "Tổng hợp API Endpoints"
+> của [module-roster.md](../requirements/module-roster.md) và
+> [module-news.md](../requirements/module-news.md) đã có đủ 8 endpoint, ma trận phân quyền của
+> module Roster đã thêm 3 dòng cho luồng duyệt đơn xin ca, và
+> [non-functional.md](../requirements/non-functional.md) đã thêm NFR-DEPLOY-06 (healthcheck) +
+> NFR-DEPLOY-07 (đặc tả OpenAPI) — tổng NFR từ 37 lên 39.
 
 ---
 

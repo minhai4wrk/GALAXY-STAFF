@@ -90,6 +90,8 @@ Tài liệu này mô tả các yêu cầu phi chức năng (Non-Functional Requi
 | NFR-DEPLOY-03 | Deploy production | Hệ thống có thể deploy lên cloud platform (Render hoặc Railway free tier) để demo online. | Có live URL truy cập được từ internet. Uptime ổn định trong buổi demo. | **Should** |
 | NFR-DEPLOY-04 | Seed data | Có script tạo dữ liệu mẫu (1 Manager + 12 Staff + lịch rảnh + ca làm 2 tuần) để demo và test. | Chạy seed script → dữ liệu sẵn sàng demo ngay, không cần nhập tay. | **Must** |
 | NFR-DEPLOY-05 | README & Setup guide | README.md đầy đủ: mô tả dự án, hướng dẫn cài đặt, cấu hình `.env`, chạy dev, chạy Docker, cấu trúc thư mục. | Developer mới đọc README → setup và chạy được trong ≤ 15 phút. | **Must** |
+| NFR-DEPLOY-06 | Healthcheck endpoint | `GET /health` trả về trạng thái ứng dụng **và** kết nối database. Docker Compose dùng làm điều kiện `service_healthy`; Render dùng để biết instance đã sẵn sàng nhận request. | Container backend chỉ chuyển sang `healthy` khi cả app lẫn DB đều phản hồi. Endpoint trả về dưới 200ms. | **Must** |
+| NFR-DEPLOY-07 | Đặc tả API dạng OpenAPI | Toàn bộ endpoint được đặc tả bằng OpenAPI 3.0 (`docs/api/openapi.yaml`), dùng làm hợp đồng giữa backend và frontend. | File spec qua được `openapi-spec-validator` không lỗi. Spec do FastAPI sinh tại `/docs` khớp với file đặc tả. | **Should** |
 
 ---
 
