@@ -50,7 +50,7 @@ flowchart TD
     end
 
     subgraph BACKEND["⚙ BACKEND"]
-        D6{"Deadline server\n> 18h Thứ 7?"}
+        D6{"Deadline server\nđã qua 18h Thứ 7?"}
         B2["Trả về 400\n'Đã qua deadline đăng ký'"]
         B3["Validate slot\n(trong khoảng 8h–2h)"]
         D7{"Slot hợp lệ?"}

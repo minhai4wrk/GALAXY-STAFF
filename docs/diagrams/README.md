@@ -8,6 +8,24 @@ Các sơ đồ UML phục vụ Chương 3 (Phân tích & Thiết kế hệ thố
 - Nguồn diagram nằm trong code block ` ```mermaid ... ``` ` của từng file `.md`.
 - PNG/SVG export đặt trong `out/` (dùng cho báo cáo `.docx`).
 
+## Xuất ảnh cho báo cáo
+
+```bash
+bash docs/diagrams/export.sh
+```
+
+Xuất toàn bộ sơ đồ ra PNG (scale 3, nền trắng) và SVG vào `out/`. File có nhiều sơ đồ sẽ được
+đánh số theo thứ tự xuất hiện, ví dụ `sequence-login-1.png`, `sequence-login-2.png`.
+
+> ⚠️ **Ba ký tự làm mermaid chết**: `<`, `>` và `;`.
+> Script tự chạy `check_mermaid.py` trước khi render nên sẽ dừng ngay và chỉ đúng dòng vi phạm.
+> Chạy riêng bước kiểm tra: `python docs/diagrams/check_mermaid.py`
+>
+> Điểm khó chịu: **flowchart tha còn sequenceDiagram thì không**. Nên có thể xảy ra chuyện
+> 4 activity diagram xuất ảnh bình thường trong khi các sequence diagram chết hàng loạt —
+> và thông báo lỗi của cả hai trường hợp đều chỉ là `got 'INVALID'`.
+> Thay bằng chữ (`trước`, `sau`, `quá`), ký hiệu `≤ ≥ →`, hoặc dấu phẩy thay cho `;`.
+
 ## Danh sách sơ đồ
 
 ### Use Case Diagrams

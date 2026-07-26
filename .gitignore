@@ -62,3 +62,8 @@ $RECYCLE.BIN/
 *.docx#
 ~$*.docx
 docs/diagrams/out/*.tmp
+
+# ===== Ảnh export từ mermaid =====
+# Sinh lại được bất cứ lúc nào bằng `bash docs/diagrams/export.sh` nên không commit,
+# tránh làm phình repo bằng file nhị phân. Khi nộp bài thì chạy script rồi chèn vào Word.
+docs/diagrams/out/

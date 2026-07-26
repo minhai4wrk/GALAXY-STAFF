@@ -468,11 +468,8 @@ Khung giờ vận hành 8h00 → 2h00 sáng hôm sau khiến kiểu `TIME` khôn
 -- Đổi giờ đồng hồ sang số phút tính từ 08:00 (mốc mở cửa)
 CREATE FUNCTION op_minute(t TIME) RETURNS INTEGER
   LANGUAGE sql IMMUTABLE STRICT AS $$
-  SELECT CASE
-    WHEN t >= TIME '08:00'
-      THEN (EXTRACT(EPOCH FROM t - TIME '08:00') / 60)::INTEGER
-    ELSE (EXTRACT(EPOCH FROM t + INTERVAL '24 hours' - TIME '08:00') / 60)::INTEGER
-  END;
+  SELECT (EXTRACT(EPOCH FROM (t - TIME '08:00')) / 60)::INTEGER
+       + CASE WHEN t >= TIME '08:00' THEN 0 ELSE 1440 END;
 $$;
 
 ALTER TABLE availabilities
@@ -482,6 +479,21 @@ ALTER TABLE availabilities
 ```
 
 Với hàm này, khung giờ `18:00 → 02:00` cho `op_minute = 600 → 1080` — hợp lệ và so sánh đúng. Đồng thời chặn được slot nằm ngoài khung vận hành (điều mà mục "Validation" của `module-availability.md` yêu cầu nhưng bản ERD trước chưa có).
+
+Bảng giá trị đã kiểm chứng trên PostgreSQL 16:
+
+| `t` | 08:00 | 13:00 | 18:00 | 23:30 | 00:00 | 02:00 | 07:30 |
+|-----|-------|-------|-------|-------|-------|-------|-------|
+| `op_minute(t)` | 0 | 300 | 600 | 930 | 960 | **1080** | 1410 |
+
+> ⚠️ **Cạm bẫy đã vấp phải khi hiện thực hóa (26/07/2026)**: bản đầu của hàm này viết nhánh sau nửa đêm là
+> `EXTRACT(EPOCH FROM t + INTERVAL '24 hours' - TIME '08:00')`. Sai — **kiểu `TIME` của PostgreSQL cuộn vòng modulo 24 giờ**,
+> nên `TIME '02:00' + INTERVAL '24 hours'` vẫn bằng `02:00` và phép cộng hoàn toàn vô tác dụng.
+> Hậu quả: `op_minute('02:00')` trả về `-360` thay vì `1080`, khiến `ck_avail_end` **từ chối đúng ca tối 18h→2h**
+> mà cả thiết kế này sinh ra để phục vụ. Phải cộng thẳng **1440 phút** ở tầng số nguyên như trên.
+>
+> Đây là lần thứ hai cùng một chỗ gây lỗi: lần đầu là ràng buộc `end_time > start_time`, lần này là chính bản vá cho nó.
+> Bài học: mọi biểu thức liên quan tới `TIME` đều phải **chạy thử ra số cụ thể** rồi đối chiếu bảng trên, không tin vào việc đọc code thấy hợp lý.
 
 ### 5.4. Chống trùng lặp & chống chồng giờ
 

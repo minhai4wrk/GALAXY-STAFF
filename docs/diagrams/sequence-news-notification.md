@@ -37,7 +37,7 @@ sequenceDiagram
 
     alt [thiếu tiêu đề hoặc nội dung]
         FM-->>M: Inline error, KHÔNG gọi API
-    else [ảnh > 5MB] — BR-NW-04
+    else [ảnh quá 5MB] — BR-NW-04
         FM-->>M: "Kích thước ảnh vượt quá giới hạn"
     else [hợp lệ]
         FM->>RT: POST /api/news { title, content, image }
