@@ -36,7 +36,7 @@ Việc **trao đổi ca** (pass / nhận) sau khi lịch đã publish được t
 | **Kết quả mong đợi** | - Hiển thị đúng các ca theo timeline. <br> - Thanh màu phân biệt trạng thái (assigned/open/pending). <br> - Click vào thanh ca → xem chi tiết. |
 | **Mức ưu tiên** | **Must** |
 
-**API:** `GET /api/shifts?date=YYYY-MM-DD&view=day`
+**API:** `GET /api/shifts?date=YYYY-MM-DD&view=day` · `GET /api/shifts/{id}` (chi tiết khi click vào thanh ca)
 
 ---
 
@@ -116,7 +116,7 @@ Việc **trao đổi ca** (pass / nhận) sau khi lịch đã publish được t
 | **Kết quả mong đợi** | - ≥ 90% ca được gán đúng người rảnh. <br> - Không vi phạm constraint (max giờ, min nghỉ, xung đột). <br> - Hoàn thành < 10 giây cho 100 NV × 300 ca. <br> - Ca không đủ người: giữ lại ở Open-shift, hiển thị cảnh báo. <br> - Kết quả là draft — chưa publish, Manager có thể sửa. |
 | **Mức ưu tiên** | **Must** |
 
-**API:** `POST /api/shifts/auto-schedule`
+**API:** `POST /api/shifts/auto-schedule` · `POST /api/shifts/auto-schedule/reset` (UC-05 luồng 4b — gỡ **chỉ** các ca `assignment_source = auto`, giữ nguyên ca Manager gán tay)
 
 ---
 
@@ -162,7 +162,24 @@ Việc **trao đổi ca** (pass / nhận) sau khi lịch đã publish được t
 | **Kết quả mong đợi** | - Apply thành công: request pending, gửi notification cho Manager. <br> - Manager approve: ca chuyển từ Open-shift xuống hàng của Staff. <br> - Manager reject: ca giữ nguyên ở Open-shift, gửi notification cho Staff. |
 | **Mức ưu tiên** | **Should** |
 
-**API:** `POST /api/shifts/{id}/apply`
+**API:**
+
+| Method | Endpoint | Ai gọi |
+|--------|----------|--------|
+| `POST` | `/api/shifts/{id}/apply` | Staff gửi đơn |
+| `GET` | `/api/shift-applications` | Manager xem đơn chờ duyệt · Staff xem đơn của mình |
+| `PUT` | `/api/shift-applications/{id}/approve` | Manager duyệt → ca chuyển xuống hàng của Staff |
+| `PUT` | `/api/shift-applications/{id}/reject` | Manager từ chối → ca giữ ở Open-shift |
+| `DELETE` | `/api/shift-applications/{id}` | Staff tự hủy đơn khi Manager chưa xử lý |
+
+> Bốn endpoint sau vốn bị thiếu ở bản 1.0 của tài liệu: yêu cầu đã mô tả *"Manager approve/reject"*,
+> ERD đã có bảng `shift_applications` và ENUM `notification_type` đã có
+> `shift_apply_approved` / `shift_apply_rejected`, nhưng **không có endpoint nào** để thực hiện —
+> nghĩa là đơn của Staff gửi lên sẽ nằm chết ở trạng thái `pending`. Phát hiện khi viết
+> [OpenAPI spec](../api/openapi.yaml), chi tiết ở [docs/api/README.md](../api/README.md) mục 4.
+>
+> Khi duyệt một đơn, hệ thống **tự động từ chối các đơn `pending` còn lại của cùng ca đó**
+> (một ca chỉ có một người làm) và gửi thông báo tương ứng cho từng người.
 
 ---
 
@@ -193,6 +210,9 @@ Bảng 1: Ma trận phân quyền module Roster
 | Auto-Schedule (FR-ROSTER-06) | ✅ | ❌ |
 | Publish Roster (FR-ROSTER-08) | ✅ | ❌ |
 | Apply Open-shift (FR-ROSTER-09) | ❌ | ✅ |
+| Xem danh sách đơn xin ca (FR-ROSTER-09) | ✅ (tất cả) | ✅ (của mình) |
+| Duyệt / từ chối đơn xin ca (FR-ROSTER-09) | ✅ | ❌ |
+| Hủy đơn xin ca của mình (FR-ROSTER-09) | ❌ | ✅ |
 | Xem lịch cá nhân (FR-ROSTER-10) | ✅ | ✅ |
 
 ---
@@ -204,14 +224,24 @@ Bảng 2: API endpoints module Roster
 | Method | Endpoint | Mô tả | Quyền | FR |
 |--------|----------|-------|-------|-----|
 | `GET` | `/api/shifts?date=&view=day\|week` | Xem lịch | Authenticated | FR-ROSTER-01, 02 |
+| `GET` | `/api/shifts/{id}` | Chi tiết ca + đồng nghiệp cùng ca | Authenticated | FR-ROSTER-01, 10 |
 | `POST` | `/api/shifts` | Tạo ca | Manager | FR-ROSTER-03 |
 | `PUT` | `/api/shifts/{id}` | Sửa ca | Manager | FR-ROSTER-04 |
-| `DELETE` | `/api/shifts/{id}` | Xóa ca | Manager | FR-ROSTER-05 |
+| `DELETE` | `/api/shifts/{id}` | Xóa ca (soft delete) | Manager | FR-ROSTER-05 |
 | `POST` | `/api/shifts/auto-schedule` | Auto-schedule | Manager | FR-ROSTER-06 |
+| `POST` | `/api/shifts/auto-schedule/reset` | Gỡ kết quả auto-schedule | Manager | FR-ROSTER-06 (UC-05 4b) |
 | `POST` | `/api/shifts/publish` | Publish lịch | Manager | FR-ROSTER-08 |
 | `POST` | `/api/shifts/{id}/apply` | Apply open-shift | Staff | FR-ROSTER-09 |
+| `GET` | `/api/shift-applications` | Danh sách đơn xin ca | Authenticated | FR-ROSTER-09 |
+| `PUT` | `/api/shift-applications/{id}/approve` | Duyệt đơn xin ca | Manager | FR-ROSTER-09 |
+| `PUT` | `/api/shift-applications/{id}/reject` | Từ chối đơn xin ca | Manager | FR-ROSTER-09 |
+| `DELETE` | `/api/shift-applications/{id}` | Staff tự hủy đơn | Staff (chủ đơn) | FR-ROSTER-09 |
 
 > **Ghi chú:** API trao đổi ca (`/api/exchanges/*`) thuộc module Shift Exchange — xem [module-exchange.md](module-exchange.md).
+>
+> **Đặc tả đầy đủ** (request/response body, mã lỗi, ví dụ): [docs/api/openapi.yaml](../api/openapi.yaml).
+> Khi khai báo router FastAPI, nhớ đặt `/auto-schedule`, `/auto-schedule/reset`, `/publish`
+> **trước** `/{id}`, nếu không đường dẫn tĩnh sẽ bị route tham số nuốt mất.
 
 ---
 

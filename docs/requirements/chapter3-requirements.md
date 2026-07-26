@@ -221,6 +221,8 @@ Bảng 3.14: Yêu cầu triển khai
 | NFR-DEPLOY-03 | Deploy production | Live URL trên Render/Railway. Ổn định khi demo | Should |
 | NFR-DEPLOY-04 | Seed data | Script tạo 1 Manager + 12 Staff + lịch 2 tuần | Must |
 | NFR-DEPLOY-05 | README | Setup guide đầy đủ. Developer mới chạy được trong ≤ 15 phút | Must |
+| NFR-DEPLOY-06 | Healthcheck endpoint | `GET /health` kiểm tra cả app lẫn DB, phản hồi dưới 200ms | Must |
+| NFR-DEPLOY-07 | Đặc tả OpenAPI 3.0 | Spec qua validator không lỗi, khớp với `/docs` do FastAPI sinh | Should |
 
 ### 3.2.7. Tương thích (Compatibility)
 
@@ -439,7 +441,7 @@ Chương 3 đã trình bày toàn bộ kết quả phân tích yêu cầu cho h�
 
 - **55 yêu cầu chức năng** phân bổ trên 4 module chính (Authentication, Availability, Roster, News Feed) và 2 module bổ trợ (Shift Exchange, Notification). Trong đó 36 yêu cầu ở mức Must Have — bắt buộc hoàn thành trong 8 tuần.
 
-- **37 yêu cầu phi chức năng** chia thành 7 nhóm (hiệu năng, bảo mật, khả năng sử dụng, độ tin cậy, bảo trì, triển khai, tương thích), mỗi yêu cầu có tiêu chí đo lường cụ thể.
+- **39 yêu cầu phi chức năng** chia thành 7 nhóm (hiệu năng, bảo mật, khả năng sử dụng, độ tin cậy, bảo trì, triển khai, tương thích), mỗi yêu cầu có tiêu chí đo lường cụ thể.
 
 - **14 Use Case** mô tả các luồng tương tác chính giữa Manager/Staff với hệ thống. 3 Use Case trọng tâm (Đăng nhập, Đăng ký lịch rảnh, Auto-Scheduling) được phân tích chi tiết với luồng chính, luồng ngoại lệ và ghi chú kỹ thuật.
 
