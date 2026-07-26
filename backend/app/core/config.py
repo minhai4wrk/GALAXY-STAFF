@@ -2,7 +2,6 @@
 
 from functools import lru_cache
 
-from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -47,15 +46,14 @@ class Settings(BaseSettings):
     MAX_IMAGES_PER_POST: int = 3
 
     # ---------- CORS ----------
-    BACKEND_CORS_ORIGINS: list[str] = Field(default_factory=list)
+    # Giữ kiểu str: pydantic-settings tự JSON-parse mọi field kiểu list TRƯỚC khi validator
+    # chạy, nên khai báo list[str] sẽ chết ngay lúc khởi động với chuỗi "a,b" trong .env.
+    BACKEND_CORS_ORIGINS: str = ""
 
-    @field_validator("BACKEND_CORS_ORIGINS", mode="before")
-    @classmethod
-    def _split_origins(cls, value: str | list[str]) -> list[str]:
-        """Cho phép khai báo CORS dạng chuỗi ngăn cách bởi dấu phẩy trong .env."""
-        if isinstance(value, str):
-            return [origin.strip() for origin in value.split(",") if origin.strip()]
-        return value
+    @property
+    def cors_origins(self) -> list[str]:
+        """Tách chuỗi CORS ngăn cách bởi dấu phẩy thành danh sách origin."""
+        return [origin.strip() for origin in self.BACKEND_CORS_ORIGINS.split(",") if origin.strip()]
 
 
 @lru_cache
