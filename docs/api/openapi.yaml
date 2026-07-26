@@ -1,0 +1,2909 @@
+openapi: 3.0.3
+
+info:
+  title: Galaxy Staff API
+  version: 1.0.0
+  description: |
+    API của hệ thống quản lý nhân sự rạp chiếu phim **Galaxy Staff**.
+
+    Đặc tả này là hợp đồng giữa backend (FastAPI) và frontend (React), sinh ra từ
+    55 yêu cầu chức năng trong `docs/requirements/` và ERD v2.0 trong `docs/erd.md`.
+
+    ### Quy ước chung
+    | Hạng mục | Quy tắc |
+    |----------|---------|
+    | Định dạng thành công | `{ "data": T }` hoặc `{ "data": [T], "total": n }` |
+    | Định dạng lỗi | `{ "detail": "mô tả lỗi" }` |
+    | Phân trang | `?page=1&size=20` (page bắt đầu từ 1) |
+    | Xác thực | `Authorization: Bearer <access_token>` |
+    | Múi giờ | Mọi trường `date-time` là **TIMESTAMPTZ chuẩn UTC**. Rạp ở UTC+7, frontend tự đổi khi hiển thị |
+
+    ### Ba khái niệm dễ hiểu sai (đọc trước khi code)
+    1. **Open-shift** = `assigned_user_id == null`, **không phải** `status == "open"`.
+       `status` chỉ có hai giá trị `draft` / `published`.
+    2. **Ca qua nửa đêm** là chuyện bình thường (rạp mở 8h00 → 2h00 sáng hôm sau).
+       `shifts` dùng `start_at`/`end_at` kiểu date-time nên `end_at` luôn lớn hơn `start_at`.
+       Riêng `availabilities` dùng kiểu `time`, ở đó `end_time` **có thể nhỏ hơn** `start_time`
+       (ví dụ `18:00 → 02:00`) — so sánh phải qua hàm SQL `op_minute()`.
+    3. **Tuần làm việc của rạp chạy từ Thứ 6 đến Thứ 5**. Mọi tham số `week_start`
+       bắt buộc là một ngày **Thứ 6**, và `day_of_week = 0` nghĩa là **Thứ 6**, không phải Chủ nhật.
+
+    ### Khóa theo thời gian
+    - Đăng ký lịch rảnh khóa lúc **18h00 Thứ 7** của tuần trước tuần đăng ký (BR-AV-03).
+    - Ca đang có yêu cầu trao đổi / đơn xin ca chờ duyệt thì `is_locked = true` → không sửa/xóa được (BR-EX-06).
+
+    ### WebSocket (không mô tả được bằng OpenAPI 3.0)
+    `WS /ws/notifications?token=<access_token>` — server đẩy object `Notification` mỗi khi có
+    thông báo mới cho người dùng đang kết nối (FR-NOTIF-06). Nếu kết nối thất bại, frontend
+    fallback sang polling `GET /api/notifications` mỗi 30 giây.
+  contact:
+    name: Đồ án Galaxy Staff
+  license:
+    name: Sử dụng cho mục đích học tập
+
+servers:
+  - url: http://localhost:8000
+    description: Môi trường phát triển (Docker Compose)
+  - url: https://galaxy-staff-api.onrender.com
+    description: Môi trường production (Render)
+
+tags:
+  - name: System
+    description: Kiểm tra tình trạng hệ thống
+  - name: Auth
+    description: Đăng nhập, làm mới token, thông tin cá nhân (FR-AUTH-01 → 06)
+  - name: Users
+    description: Quản lý tài khoản nhân viên — Manager only (FR-AUTH-07 → 11)
+  - name: Availabilities
+    description: Đăng ký và tổng hợp lịch rảnh theo tuần (FR-AVAIL-01 → 11)
+  - name: Shifts
+    description: Roster — tạo, sửa, xếp ca tự động, công bố lịch (FR-ROSTER-01 → 10)
+  - name: Shift Applications
+    description: Đơn xin nhận ca trống và việc duyệt đơn (FR-ROSTER-09)
+  - name: Exchanges
+    description: Trao đổi ca — pass, nhận, duyệt (FR-EXCHANGE-01 → 05)
+  - name: News
+    description: Bảng tin nội bộ và theo dõi lượt đọc (FR-NEWS-01 → 06)
+  - name: Notifications
+    description: Thông báo hệ thống (FR-NOTIF-01 → 07)
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ==================================================================
+  # SYSTEM
+  # ==================================================================
+  /health:
+    get:
+      tags: [System]
+      summary: Kiểm tra sức khỏe hệ thống
+      description: Dùng cho Docker healthcheck và giám sát trên Render. Không cần token.
+      security: []
+      operationId: healthCheck
+      responses:
+        "200":
+          description: Ứng dụng đang chạy
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, database, version]
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  database:
+                    type: string
+                    enum: [up, down]
+                    example: up
+                  version:
+                    type: string
+                    example: "1.0.0"
+
+  # ==================================================================
+  # AUTH
+  # ==================================================================
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Đăng nhập hệ thống
+      description: |
+        FR-AUTH-01. Trả về cặp access token (30 phút) + refresh token (7 ngày).
+
+        Theo BR-06, thông báo lỗi **không phân biệt** email sai hay mật khẩu sai để
+        chống enumeration attack — cả hai trường hợp đều trả cùng một câu.
+
+        Nếu `must_change_password = true`, frontend phải điều hướng người dùng
+        sang màn hình đổi mật khẩu trước khi vào Dashboard.
+      security: []
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Đăng nhập thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/TokenPair"
+        "401":
+          description: Sai thông tin đăng nhập
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                detail: Email hoặc mật khẩu không đúng
+        "403":
+          description: Tài khoản đã bị vô hiệu hóa
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                detail: Tài khoản đã bị khóa, vui lòng liên hệ quản lý
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Làm mới access token
+      description: |
+        FR-AUTH-03. Frontend gọi tự động trong axios interceptor khi gặp 401.
+
+        **Giới hạn V1**: refresh token không được lưu ở server (chưa có bảng `refresh_tokens`),
+        nên không thể thu hồi thủ công — token chỉ mất hiệu lực khi hết hạn.
+      security: []
+      operationId: refreshToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token:
+                  type: string
+                  example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+      responses:
+        "200":
+          description: Cấp access token mới
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [access_token, token_type, expires_in]
+                    properties:
+                      access_token:
+                        type: string
+                      token_type:
+                        type: string
+                        example: bearer
+                      expires_in:
+                        type: integer
+                        description: Số giây còn hiệu lực
+                        example: 1800
+        "401":
+          description: Refresh token hết hạn hoặc không hợp lệ → buộc đăng nhập lại
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                detail: Refresh token không hợp lệ hoặc đã hết hạn
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/auth/me:
+    get:
+      tags: [Auth]
+      summary: Xem thông tin tài khoản đang đăng nhập
+      description: FR-AUTH-04. Không bao giờ trả về `password_hash`.
+      operationId: getCurrentUser
+      responses:
+        "200":
+          description: Thông tin người dùng hiện tại
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/auth/change-password:
+    put:
+      tags: [Auth]
+      summary: Đổi mật khẩu cá nhân
+      description: |
+        FR-AUTH-05. Phải nhập đúng mật khẩu hiện tại. Sau khi đổi thành công,
+        hệ thống set `must_change_password = false`.
+      operationId: changePassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordChangeRequest"
+      responses:
+        "200":
+          description: Đổi mật khẩu thành công
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+              example:
+                data:
+                  message: Đổi mật khẩu thành công
+        "400":
+          description: Mật khẩu hiện tại không đúng
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                detail: Mật khẩu hiện tại không đúng
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      summary: Tạo tài khoản nhân viên mới (Manager)
+      description: |
+        FR-AUTH-06. Staff **không tự đăng ký** — chỉ Manager tạo tài khoản.
+
+        Nếu bỏ trống `password`, hệ thống dùng mật khẩu mặc định trong biến môi trường
+        `DEFAULT_USER_PASSWORD` và đặt `must_change_password = true`.
+      operationId: registerUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserCreate"
+      responses:
+        "201":
+          description: Tạo tài khoản thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/User"
+        "400":
+          description: Email đã tồn tại
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                detail: Email đã được sử dụng
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  # ==================================================================
+  # USERS
+  # ==================================================================
+  /api/users:
+    get:
+      tags: [Users]
+      summary: Danh sách nhân viên (Manager)
+      description: FR-AUTH-07. Hỗ trợ tìm kiếm theo tên/email và lọc theo role, trạng thái.
+      operationId: listUsers
+      parameters:
+        - name: search
+          in: query
+          description: Tìm gần đúng trong `full_name` và `email`
+          schema:
+            type: string
+          example: nguyen
+        - name: role
+          in: query
+          schema:
+            $ref: "#/components/schemas/UserRole"
+        - name: is_active
+          in: query
+          schema:
+            type: boolean
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+      responses:
+        "200":
+          description: Danh sách nhân viên đã phân trang
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, total]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/User"
+                  total:
+                    type: integer
+                    description: Tổng số bản ghi khớp bộ lọc (không phải số bản ghi trang này)
+                    example: 12
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/users/{id}:
+    parameters:
+      - $ref: "#/components/parameters/IdPath"
+    get:
+      tags: [Users]
+      summary: Chi tiết một nhân viên (Manager)
+      description: FR-AUTH-08.
+      operationId: getUser
+      responses:
+        "200":
+          description: Thông tin nhân viên
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/UserDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Users]
+      summary: Cập nhật thông tin nhân viên
+      description: |
+        FR-AUTH-09. Manager sửa được mọi người; Staff **chỉ sửa được chính mình**
+        và **không được** đổi `role` hay `location_id` (BR-07) — vi phạm sẽ nhận 403.
+      operationId: updateUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserUpdate"
+      responses:
+        "200":
+          description: Cập nhật thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/User"
+        "400":
+          description: Email mới đã có người dùng
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                detail: Email đã được sử dụng
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Staff sửa người khác, hoặc Staff cố đổi role/location
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                detail: Bạn không có quyền thay đổi vai trò
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/users/{id}/status:
+    parameters:
+      - $ref: "#/components/parameters/IdPath"
+    patch:
+      tags: [Users]
+      summary: Vô hiệu hóa / kích hoạt tài khoản (Manager)
+      description: |
+        FR-AUTH-10. Soft delete — không xóa cứng để giữ dữ liệu lịch sử (ca làm, lịch rảnh cũ).
+
+        Theo BR-04, Manager **không thể tự vô hiệu hóa chính mình**, tránh trường hợp
+        hệ thống không còn ai quản trị.
+      operationId: updateUserStatus
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [is_active]
+              properties:
+                is_active:
+                  type: boolean
+                  example: false
+      responses:
+        "200":
+          description: Cập nhật trạng thái thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/User"
+        "400":
+          description: Manager cố tự vô hiệu hóa mình
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                detail: Không thể vô hiệu hóa tài khoản của chính mình
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/users/{id}/reset-password:
+    parameters:
+      - $ref: "#/components/parameters/IdPath"
+    post:
+      tags: [Users]
+      summary: Reset mật khẩu nhân viên (Manager)
+      description: |
+        FR-AUTH-11. Đặt lại về mật khẩu mặc định và bật `must_change_password = true`.
+
+        Hệ thống nội bộ nên không có luồng reset qua email — nhân viên liên hệ trực tiếp quản lý.
+      operationId: resetUserPassword
+      responses:
+        "200":
+          description: Đã reset mật khẩu
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+              example:
+                data:
+                  message: Đã đặt lại mật khẩu về giá trị mặc định
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ==================================================================
+  # AVAILABILITIES
+  # ==================================================================
+  /api/availabilities:
+    get:
+      tags: [Availabilities]
+      summary: Xem lịch rảnh đã đăng ký của một tuần
+      description: |
+        FR-AVAIL-09 (xem của mình) và FR-AVAIL-10 (Manager xem của nhân viên khác).
+
+        Bỏ trống `user_id` → trả về bản đăng ký của chính người đang đăng nhập.
+        Truyền `user_id` khác mình mà không phải Manager → 403.
+
+        Trường `is_locked` trong kết quả **được tính tại thời điểm gọi API**
+        (`now > week_start + 1 ngày + 18:00`), không lưu trong cơ sở dữ liệu.
+      operationId: getAvailability
+      parameters:
+        - $ref: "#/components/parameters/WeekStart"
+        - name: user_id
+          in: query
+          description: Chỉ Manager mới được truyền id của người khác
+          schema:
+            type: integer
+          example: 7
+      responses:
+        "200":
+          description: Bản đăng ký của tuần. `data` là `null` nếu chưa đăng ký.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    allOf:
+                      - $ref: "#/components/schemas/AvailabilitySubmission"
+                    nullable: true
+        "400":
+          description: "`week_start` không phải ngày Thứ 6"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                detail: week_start phải là một ngày Thứ 6
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      tags: [Availabilities]
+      summary: Lưu lịch rảnh (batch upsert)
+      description: |
+        FR-AVAIL-06. Gửi **toàn bộ** các khung giờ của tuần trong một request.
+        Server thay thế trọn vẹn bản đăng ký cũ: khung nào không có trong payload sẽ bị xóa
+        (BR-AV-05: mỗi nhân viên chỉ có 1 bản đăng ký cho mỗi tuần).
+
+        Server tự tính `total_days`. Nếu dưới 5 ngày mà không gửi `reason` thì **vẫn lưu**
+        (FR-AVAIL-07 chỉ cảnh báo, không chặn) — nhưng response sẽ có `warning` để frontend hiện popup.
+
+        Sau deadline 18h00 Thứ 7 → 403, kể cả khi frontend quên khóa nút (BR-AV-07 yêu cầu
+        enforce ở cả hai tầng).
+      operationId: saveAvailability
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AvailabilityBatchRequest"
+      responses:
+        "200":
+          description: Lưu thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    allOf:
+                      - $ref: "#/components/schemas/AvailabilitySubmission"
+                      - type: object
+                        properties:
+                          warning:
+                            type: string
+                            nullable: true
+                            description: Có giá trị khi đăng ký dưới 5 ngày
+                            example: Bạn mới đăng ký 3/5 ngày tối thiểu
+        "400":
+          description: |
+            Dữ liệu sai nghiệp vụ — `week_start` không phải Thứ 6, khung giờ nằm ngoài
+            8h00–2h00, hoặc hai khung giờ trong cùng một ngày chồng lên nhau.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                overlap:
+                  summary: Chồng giờ trong cùng ngày
+                  value:
+                    detail: "Thứ 6: khung 08:00-13:00 chồng giờ với 09:00-10:00"
+                outOfRange:
+                  summary: Ngoài khung vận hành
+                  value:
+                    detail: "Khung giờ phải nằm trong 08:00 đến 02:00 hôm sau"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Đã qua deadline đăng ký
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                detail: Đã qua deadline đăng ký cho tuần này
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/availabilities/overview:
+    get:
+      tags: [Availabilities]
+      summary: Overlap View — tổng hợp lịch rảnh toàn team
+      description: |
+        FR-AVAIL-01. Trả về lưới 7 ngày × 36 ô 30 phút. Mỗi ô cho biết **số người rảnh**
+        (dùng để tô gradient màu) kèm danh sách id nhân viên (dùng cho tooltip khi hover).
+
+        Ô nào không ai rảnh thì **không xuất hiện** trong mảng `cells` — giảm kích thước
+        payload thay vì trả đủ 252 ô rỗng.
+
+        Chỉ số ô: `slot_index = 0` ứng với 08:00–08:30, `slot_index = 35` ứng với 01:30–02:00.
+      operationId: getAvailabilityOverview
+      parameters:
+        - $ref: "#/components/parameters/WeekStart"
+      responses:
+        "200":
+          description: Dữ liệu lưới chồng lớp
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/OverlapView"
+        "400":
+          description: "`week_start` không phải ngày Thứ 6"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/availabilities/stats:
+    get:
+      tags: [Availabilities]
+      summary: Thống kê ai đã / chưa đăng ký (Manager)
+      description: |
+        FR-AVAIL-11. Dùng để Manager nhắc nhở nhân viên trước deadline.
+        Phân loại `submitted` (đủ ≥ 5 ngày) / `incomplete` (dưới 5 ngày) / `missing` (chưa đăng ký).
+      operationId: getAvailabilityStats
+      parameters:
+        - $ref: "#/components/parameters/WeekStart"
+      responses:
+        "200":
+          description: Thống kê theo tuần
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/AvailabilityStats"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  # ==================================================================
+  # SHIFTS (ROSTER)
+  # ==================================================================
+  /api/shifts:
+    get:
+      tags: [Shifts]
+      summary: Xem lịch làm theo ngày hoặc tuần
+      description: |
+        FR-ROSTER-01 (Timeline View theo ngày) và FR-ROSTER-02 (Daily Card View theo tuần).
+
+        **Phạm vi dữ liệu theo vai trò**:
+        - Manager thấy toàn bộ ca của mọi nhân viên, kể cả ca `draft`.
+        - Staff chỉ thấy ca `published`: ca của chính mình, ca Open-shift, và ca của đồng nghiệp
+          trùng khung giờ với mình (FR-ROSTER-10 yêu cầu hiện "ai làm cùng ca").
+      operationId: listShifts
+      parameters:
+        - name: date
+          in: query
+          required: true
+          description: Với `view=day` là ngày cần xem; với `view=week` là ngày bất kỳ trong tuần cần xem
+          schema:
+            type: string
+            format: date
+          example: "2026-08-07"
+        - name: view
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [day, week]
+          example: week
+        - name: user_id
+          in: query
+          description: Lọc theo một nhân viên. Staff chỉ được truyền id của chính mình.
+          schema:
+            type: integer
+        - name: status
+          in: query
+          description: Lọc theo trạng thái công bố. Staff truyền `draft` sẽ nhận mảng rỗng.
+          schema:
+            $ref: "#/components/schemas/ShiftStatus"
+        - name: only_open
+          in: query
+          description: "`true` → chỉ lấy Open-shift (`assigned_user_id = null`)"
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Danh sách ca kèm tổng giờ trong kỳ
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, total]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Shift"
+                  total:
+                    type: integer
+                    example: 42
+                  summary:
+                    $ref: "#/components/schemas/RosterSummary"
+        "400":
+          description: Thiếu hoặc sai tham số `date` / `view`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Shifts]
+      summary: Tạo ca làm mới (Manager)
+      description: |
+        FR-ROSTER-03. Bỏ trống `assigned_user_id` → ca trở thành **Open-shift**.
+
+        Hệ thống kiểm tra 4 ràng buộc trước khi lưu (FR-ROSTER-07): nhân viên có rảnh không,
+        có chồng ca khác không, tổng giờ tuần có vượt 48h không, nghỉ giữa hai ca có đủ 8h không.
+        Nếu vi phạm mà **không** gửi `override_reason` → trả 409 kèm danh sách xung đột.
+        Gửi kèm `override_reason` → vẫn tạo, và lý do được lưu lại làm vết ghi đè.
+      operationId: createShift
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ShiftCreate"
+      responses:
+        "201":
+          description: Tạo ca thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Shift"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/ShiftConflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/shifts/auto-schedule:
+    post:
+      tags: [Shifts]
+      summary: Xếp ca tự động bằng thuật toán greedy (Manager)
+      description: |
+        FR-ROSTER-06 / UC-05. Lấy toàn bộ Open-shift của tuần rồi gán nhân viên theo thuật toán tham lam:
+
+        1. Sắp ca theo độ ưu tiên (ca tối trước ca sáng, cuối tuần trước ngày thường).
+        2. Với mỗi ca, lọc nhân viên **rảnh đúng khung giờ** và không vi phạm ràng buộc
+           C1 (48h/tuần) · C2 (nghỉ ≥ 8h) · C3 (≤ 6 ngày liên tiếp) · C4 (không chồng ca).
+        3. Sắp ứng viên theo tổng giờ **ít nhất trước** để cân bằng công bằng.
+        4. Gán người đầu tiên đủ điều kiện; không ai đủ thì ca ở lại Open-shift kèm `unassigned_reason`.
+
+        Kết quả là **draft** — Manager phải gọi `POST /api/shifts/publish` mới đến tay nhân viên.
+        Các ca do thuật toán gán có `assignment_source = "auto"`, nhờ đó Reset chỉ gỡ đúng
+        phần máy xếp và giữ nguyên ca Manager gán tay.
+      operationId: autoSchedule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [week_start]
+              properties:
+                week_start:
+                  type: string
+                  format: date
+                  description: Ngày Thứ 6 đầu tuần cần xếp
+                  example: "2026-08-07"
+                overwrite_auto:
+                  type: boolean
+                  default: true
+                  description: "`true` → gỡ các ca `assignment_source = auto` cũ rồi xếp lại từ đầu"
+      responses:
+        "200":
+          description: Kết quả xếp ca (trạng thái draft)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/AutoScheduleResult"
+        "400":
+          description: Không có Open-shift, hoặc chưa có dữ liệu lịch rảnh cho tuần này
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                detail: Chưa có nhân viên nào đăng ký lịch rảnh cho tuần 07/08/2026
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/shifts/auto-schedule/reset:
+    post:
+      tags: [Shifts]
+      summary: Hủy kết quả xếp ca tự động (Manager)
+      description: |
+        UC-05 luồng 4b — "Reset Auto-Schedule". Gỡ gán **chỉ những ca có
+        `assignment_source = "auto"`**, đưa chúng về Open-shift; ca Manager gán tay
+        (`manual`), ca từ đơn xin (`application`) và ca từ trao đổi (`exchange`) giữ nguyên.
+
+        Từ chối reset nếu tuần đó đã publish — lúc đó phải sửa từng ca để nhân viên nhận được
+        thông báo thay đổi.
+      operationId: resetAutoSchedule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [week_start]
+              properties:
+                week_start:
+                  type: string
+                  format: date
+                  example: "2026-08-07"
+      responses:
+        "200":
+          description: Đã gỡ các ca do máy xếp
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [reset_count]
+                    properties:
+                      reset_count:
+                        type: integer
+                        description: Số ca được đưa về Open-shift
+                        example: 23
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: Tuần đã publish, không thể reset hàng loạt
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                detail: Lịch tuần này đã được công bố, không thể reset hàng loạt
+
+  /api/shifts/publish:
+    post:
+      tags: [Shifts]
+      summary: Công bố lịch làm (Manager)
+      description: |
+        FR-ROSTER-08. Chuyển mọi ca `draft` của tuần sang `published`, ghi `published_at`,
+        rồi gửi notification `roster_published` cho toàn bộ nhân viên đang hoạt động.
+
+        Còn Open-shift chưa gán vẫn **cho phép publish** — chỉ trả về `open_shift_count`
+        để frontend hiện cảnh báo, vì Staff cần thấy ca trống mới đăng ký nhận được (FR-ROSTER-09).
+      operationId: publishRoster
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [week_start]
+              properties:
+                week_start:
+                  type: string
+                  format: date
+                  example: "2026-08-07"
+      responses:
+        "200":
+          description: Công bố thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [published_count, open_shift_count, notified_users]
+                    properties:
+                      published_count:
+                        type: integer
+                        example: 38
+                      open_shift_count:
+                        type: integer
+                        description: Số ca vẫn còn trống sau khi publish
+                        example: 2
+                      notified_users:
+                        type: integer
+                        example: 12
+        "400":
+          description: Không có ca draft nào để công bố
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                detail: Tuần này không có ca nào ở trạng thái draft
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/shifts/{id}:
+    parameters:
+      - $ref: "#/components/parameters/IdPath"
+    get:
+      tags: [Shifts]
+      summary: Chi tiết một ca làm
+      description: |
+        Phục vụ thao tác "click vào thanh ca để xem chi tiết" ở FR-ROSTER-01, và
+        FR-ROSTER-10 (danh sách đồng nghiệp làm cùng khung giờ).
+      operationId: getShift
+      responses:
+        "200":
+          description: Thông tin chi tiết ca
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ShiftDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Shifts]
+      summary: Sửa ca làm (Manager)
+      description: |
+        FR-ROSTER-04. Đổi giờ, đổi người, hoặc gán `assigned_user_id = null` để chuyển thành Open-shift.
+
+        Ca đang khóa (`is_locked = true`, tức đang có yêu cầu trao đổi hoặc đơn xin ca chờ duyệt)
+        thì **không sửa được** — trả 409 theo BR-EX-06.
+
+        Sửa ca đã `published` sẽ tự động gửi notification `shift_updated` cho nhân viên bị ảnh hưởng
+        (cả người cũ lẫn người mới nếu đổi người).
+      operationId: updateShift
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ShiftUpdate"
+      responses:
+        "200":
+          description: Cập nhật thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Shift"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/ShiftConflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    delete:
+      tags: [Shifts]
+      summary: Xóa ca làm (Manager)
+      description: |
+        FR-ROSTER-05. **Soft delete** — chỉ set `is_deleted = true` để không phá vỡ dữ liệu
+        lịch sử đang tham chiếu đến ca này.
+
+        Ca đang khóa (`is_locked = true`) không xóa được (BR-EX-06).
+        Xóa ca đã publish sẽ gửi notification `shift_deleted` cho nhân viên bị ảnh hưởng.
+      operationId: deleteShift
+      responses:
+        "204":
+          description: Đã xóa (không có nội dung trả về)
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Ca đang có yêu cầu trao đổi hoặc đơn xin ca chờ duyệt
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                detail: Ca đang chờ duyệt trao đổi, không thể xóa
+
+  /api/shifts/{id}/apply:
+    parameters:
+      - $ref: "#/components/parameters/IdPath"
+    post:
+      tags: [Shift Applications]
+      summary: Staff đăng ký nhận ca trống
+      description: |
+        FR-ROSTER-09. Chỉ áp dụng cho ca **đã publish** và **chưa có người** (`assigned_user_id = null`).
+
+        Nếu Staff vi phạm ràng buộc (không rảnh, quá 48h, chồng ca…) thì hệ thống **vẫn nhận đơn**
+        nhưng đánh dấu `has_conflict = true` kèm `conflict_note`, để Manager thấy cảnh báo khi duyệt.
+        Ghi lại snapshot vì tới lúc duyệt, dữ liệu giờ làm có thể đã khác.
+
+        Nhiều Staff được phép cùng xin một ca — nhưng mỗi người chỉ có **một đơn `pending`** cho mỗi ca.
+      operationId: applyForShift
+      responses:
+        "201":
+          description: Đã gửi đơn xin ca, chờ Manager duyệt
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ShiftApplication"
+        "400":
+          description: Ca không phải Open-shift, hoặc lịch chưa publish, hoặc ca đã diễn ra
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                detail: Ca này đã có người nhận
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Bạn đã có một đơn đang chờ duyệt cho ca này
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                detail: Bạn đã gửi đơn xin ca này và đang chờ duyệt
+
+  # ==================================================================
+  # SHIFT APPLICATIONS
+  # ==================================================================
+  /api/shift-applications:
+    get:
+      tags: [Shift Applications]
+      summary: Danh sách đơn xin nhận ca trống
+      description: |
+        Manager xem mọi đơn; Staff chỉ xem đơn của chính mình.
+        Dùng cho màn hình duyệt đơn của Manager và mục "đơn của tôi" phía Staff.
+      operationId: listShiftApplications
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/ApplyStatus"
+        - name: week_start
+          in: query
+          schema:
+            type: string
+            format: date
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+      responses:
+        "200":
+          description: Danh sách đơn xin ca
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, total]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ShiftApplication"
+                  total:
+                    type: integer
+                    example: 5
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/shift-applications/{id}/approve:
+    parameters:
+      - $ref: "#/components/parameters/IdPath"
+    put:
+      tags: [Shift Applications]
+      summary: Duyệt đơn xin ca (Manager)
+      description: |
+        FR-ROSTER-09 + FR-NOTIF-07. Gán ca cho người xin với `assignment_source = "application"`,
+        đồng thời **tự động từ chối các đơn `pending` còn lại của cùng ca đó** (ca chỉ có một người làm),
+        gỡ khóa `is_locked`, rồi gửi `shift_apply_approved` / `shift_apply_rejected` tương ứng.
+      operationId: approveShiftApplication
+      responses:
+        "200":
+          description: Đã duyệt đơn và gán ca
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ShiftApplication"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Đơn đã được xử lý, hoặc ca đã có người khác nhận
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                detail: Ca này đã được gán cho nhân viên khác
+
+  /api/shift-applications/{id}/reject:
+    parameters:
+      - $ref: "#/components/parameters/IdPath"
+    put:
+      tags: [Shift Applications]
+      summary: Từ chối đơn xin ca (Manager)
+      description: FR-ROSTER-09. Ca giữ nguyên ở Open-shift, gửi `shift_apply_rejected` cho người xin.
+      operationId: rejectShiftApplication
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  description: Lý do từ chối, đính kèm vào nội dung thông báo
+                  example: Ca này đã có người phù hợp hơn
+      responses:
+        "200":
+          description: Đã từ chối đơn
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ShiftApplication"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Đơn đã được xử lý trước đó
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/shift-applications/{id}:
+    parameters:
+      - $ref: "#/components/parameters/IdPath"
+    delete:
+      tags: [Shift Applications]
+      summary: Staff tự hủy đơn xin ca
+      description: |
+        Chuyển đơn sang trạng thái `cancelled` khi Manager chưa xử lý.
+        Chỉ chủ đơn mới hủy được đơn của mình.
+      operationId: cancelShiftApplication
+      responses:
+        "204":
+          description: Đã hủy đơn
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Không phải đơn của bạn
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Đơn đã được duyệt hoặc từ chối, không thể hủy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ==================================================================
+  # EXCHANGES
+  # ==================================================================
+  /api/exchanges:
+    get:
+      tags: [Exchanges]
+      summary: Danh sách yêu cầu trao đổi ca
+      description: |
+        FR-EXCHANGE-05 và FR-EXCHANGE-06 (Exchange Board).
+        Manager thấy tất cả; Staff chỉ thấy yêu cầu **liên quan đến mình**
+        (mình đăng pass hoặc mình nhận) cộng thêm mọi yêu cầu đang mở
+        `available_for_exchange` — vì đó chính là các ca Staff có thể nhận.
+      operationId: listExchanges
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/ExchangeStatus"
+        - name: week_start
+          in: query
+          description: Lọc theo tuần của ca được trao đổi
+          schema:
+            type: string
+            format: date
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+      responses:
+        "200":
+          description: Danh sách yêu cầu trao đổi
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, total]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Exchange"
+                  total:
+                    type: integer
+                    example: 3
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Exchanges]
+      summary: Đăng pass ca kèm lời nhắn (Staff)
+      description: |
+        FR-EXCHANGE-01. Điều kiện (BR-EX-01): ca phải **thuộc về người đang đăng nhập**,
+        đã `published`, và **chưa diễn ra** (`start_at > now`).
+
+        Tạo xong, ca được đặt `is_locked = true` và hiện highlight trên Exchange Board.
+        Mỗi ca chỉ có tối đa **một** yêu cầu đang hoạt động (BR-EX-02) — ràng buộc này được
+        bảo đảm bằng unique index ở cấp cơ sở dữ liệu, không chỉ ở tầng service.
+      operationId: createExchange
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [shift_id]
+              properties:
+                shift_id:
+                  type: integer
+                  example: 128
+                message:
+                  type: string
+                  maxLength: 500
+                  description: Lời nhắn hiện trong popup khi đồng nghiệp bấm vào ca
+                  example: Mình bận việc gia đình, ai nhận giúp với ạ
+      responses:
+        "201":
+          description: Đã đăng pass ca
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Exchange"
+        "400":
+          description: Ca đã diễn ra, hoặc chưa publish
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                detail: Ca này đã diễn ra
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Ca không thuộc về bạn
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                detail: Bạn chỉ có thể pass ca của chính mình
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Ca này đã có một yêu cầu trao đổi đang hoạt động
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                detail: Ca này đã được đăng trao đổi
+
+  /api/exchanges/{id}:
+    parameters:
+      - $ref: "#/components/parameters/IdPath"
+    delete:
+      tags: [Exchanges]
+      summary: Hủy bài pass ca (Staff — chủ bài)
+      description: |
+        FR-EXCHANGE-01. Chỉ hủy được khi **chưa ai bấm nhận**
+        (`status = available_for_exchange`). Ca quay về bình thường, `is_locked = false`.
+      operationId: cancelExchange
+      responses:
+        "204":
+          description: Đã hủy bài pass
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Không phải bài của bạn
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Đã có người nhận, không thể hủy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                detail: Đã có người nhận ca, không thể hủy bài
+
+  /api/exchanges/{id}/take:
+    parameters:
+      - $ref: "#/components/parameters/IdPath"
+    post:
+      tags: [Exchanges]
+      summary: Nhận ca người khác pass (Staff)
+      description: |
+        FR-EXCHANGE-02. Chuyển yêu cầu sang `pending_approval` và khóa lại cho người khác.
+
+        **Chống tranh chấp**: service dùng optimistic locking
+        (`UPDATE ... WHERE status = 'available_for_exchange'`), nên khi 5 người bấm cùng lúc
+        thì đúng 1 người nhận 200, 4 người còn lại nhận 409 — không ai bị ghi đè âm thầm.
+
+        **Cảnh báo trùng giờ (BR-EX-05)**: nếu ca định nhận chồng giờ với ca hiện có của bạn,
+        lần gọi đầu (không có `confirm_conflict`) trả về **409 kèm mô tả xung đột** để frontend
+        hiện popup xác nhận. Gọi lại với `confirm_conflict = true` thì hệ thống vẫn cho nhận,
+        đánh dấu `has_conflict = true` để Manager thấy khi duyệt.
+
+        Theo BR-EX-03, không ai tự nhận được ca do chính mình đăng — ràng buộc này cũng
+        được chốt bằng CHECK constraint ở cơ sở dữ liệu.
+      operationId: takeExchange
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                confirm_conflict:
+                  type: boolean
+                  default: false
+                  description: Đặt `true` để xác nhận vẫn nhận dù bị cảnh báo trùng giờ
+      responses:
+        "200":
+          description: Đã nhận ca, chờ Manager duyệt
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Exchange"
+        "400":
+          description: Yêu cầu không còn mở để nhận
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Bạn không thể tự nhận ca mình đã đăng
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                detail: Bạn không thể tự nhận ca mình đã đăng
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Có người nhận trước, hoặc trùng giờ và chưa xác nhận
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                takenByOther:
+                  summary: Người khác nhận trước
+                  value:
+                    detail: Ca này vừa được người khác nhận
+                conflictNeedsConfirm:
+                  summary: Trùng giờ, cần xác nhận lại
+                  value:
+                    detail: "Ca này trùng giờ với ca ngày 15/08 (18:00-23:00) của bạn. Gửi lại với confirm_conflict=true để tiếp tục."
+
+  /api/exchanges/{id}/approve:
+    parameters:
+      - $ref: "#/components/parameters/IdPath"
+    put:
+      tags: [Exchanges]
+      summary: Duyệt yêu cầu trao đổi ca (Manager)
+      description: |
+        FR-EXCHANGE-04. Chuyển ca từ người pass sang người nhận, đặt
+        `assignment_source = "exchange"` (nhãn "Trao đổi ca" trên Roster suy ra từ trường này,
+        không cần cột riêng), gỡ `is_locked`, và gửi thông báo cho cả hai bên.
+      operationId: approveExchange
+      responses:
+        "200":
+          description: Đã duyệt, Roster đã cập nhật
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Exchange"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Yêu cầu không ở trạng thái `pending_approval`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                detail: Yêu cầu này chưa có người nhận hoặc đã được xử lý
+
+  /api/exchanges/{id}/reject:
+    parameters:
+      - $ref: "#/components/parameters/IdPath"
+    put:
+      tags: [Exchanges]
+      summary: Từ chối yêu cầu trao đổi ca (Manager)
+      description: FR-EXCHANGE-04. Ca quay về người đăng pass, gỡ `is_locked`, thông báo cho cả hai bên.
+      operationId: rejectExchange
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  example: Nhân viên nhận ca sẽ vượt 48h tuần này
+      responses:
+        "200":
+          description: Đã từ chối
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Exchange"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Yêu cầu không ở trạng thái `pending_approval`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ==================================================================
+  # NEWS
+  # ==================================================================
+  /api/news:
+    get:
+      tags: [News]
+      summary: Danh sách bài thông báo (News Feed)
+      description: |
+        FR-NEWS-02. Sắp xếp mới nhất trước (BR-NW-02). Mỗi bài kèm `is_read` của
+        người đang đăng nhập để frontend gắn badge "Mới".
+      operationId: listNews
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+        - name: unread_only
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Danh sách bài viết đã phân trang
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, total]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/NewsPost"
+                  total:
+                    type: integer
+                    example: 24
+                  unread_count:
+                    type: integer
+                    description: Số bài người dùng hiện tại chưa đọc
+                    example: 3
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [News]
+      summary: Tạo bài thông báo mới (Manager)
+      description: |
+        FR-NEWS-01. Tối đa 3 ảnh mỗi bài (BR-NW-04) — upload ảnh trước qua
+        `POST /api/news/images` để lấy `image_url`, rồi truyền danh sách URL vào đây.
+
+        Đăng xong, hệ thống gửi notification `news_posted` cho toàn bộ nhân viên đang hoạt động.
+      operationId: createNews
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewsPostCreate"
+      responses:
+        "201":
+          description: Đăng bài thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/NewsPost"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/news/images:
+    post:
+      tags: [News]
+      summary: Upload ảnh đính kèm bài viết (Manager)
+      description: |
+        Bước chuẩn bị cho `POST /api/news` và `PUT /api/news/{id}`.
+        Giới hạn theo BR-NW-04: tối đa **5MB mỗi ảnh**, định dạng JPEG / PNG / WebP.
+        Trả về URL để truyền vào trường `image_urls` khi tạo hoặc sửa bài.
+      operationId: uploadNewsImage
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "201":
+          description: Upload thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [image_url]
+                    properties:
+                      image_url:
+                        type: string
+                        example: /uploads/news/2026/08/a3f9c1d2.webp
+        "400":
+          description: Ảnh quá lớn hoặc sai định dạng
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                detail: Kích thước ảnh vượt quá giới hạn 5MB
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/news/{id}:
+    parameters:
+      - $ref: "#/components/parameters/IdPath"
+    get:
+      tags: [News]
+      summary: Xem chi tiết bài thông báo
+      description: |
+        FR-NEWS-03. **Không** tự đánh dấu đã đọc — frontend phải gọi riêng
+        `POST /api/news/{id}/read`. Tách ra để việc "đã đọc" ghi nhận đúng
+        hành vi người dùng mở bài, đúng tinh thần BR-NW-03.
+      operationId: getNews
+      responses:
+        "200":
+          description: Nội dung đầy đủ của bài
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/NewsPost"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [News]
+      summary: Sửa bài thông báo (Manager)
+      description: |
+        FR-NEWS-04. Ghi `updated_at` để frontend hiện nhãn "Đã chỉnh sửa"
+        (điều kiện đúng là `updated_at != null`, không so sánh với `created_at`).
+        Trạng thái đã đọc của nhân viên **không bị reset**.
+      operationId: updateNews
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewsPostUpdate"
+      responses:
+        "200":
+          description: Cập nhật thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/NewsPost"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    delete:
+      tags: [News]
+      summary: Xóa bài thông báo (Manager)
+      description: FR-NEWS-05. Soft delete — set `is_deleted = true`, bài biến mất khỏi feed.
+      operationId: deleteNews
+      responses:
+        "204":
+          description: Đã xóa
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/news/{id}/read:
+    parameters:
+      - $ref: "#/components/parameters/IdPath"
+    post:
+      tags: [News]
+      summary: Đánh dấu đã đọc bài viết
+      description: |
+        FR-NEWS-03 / BR-NW-03. **Idempotent** — gọi nhiều lần vẫn chỉ ghi một dòng
+        (unique `(post_id, user_id)` + `ON CONFLICT DO NOTHING`), nên frontend không cần
+        kiểm tra trước khi gọi.
+      operationId: markNewsRead
+      responses:
+        "200":
+          description: Đã ghi nhận lượt đọc
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [post_id, read_at]
+                    properties:
+                      post_id:
+                        type: integer
+                        example: 12
+                      read_at:
+                        type: string
+                        format: date-time
+                        example: "2026-08-05T09:14:03Z"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/news/{id}/reads:
+    parameters:
+      - $ref: "#/components/parameters/IdPath"
+    get:
+      tags: [News]
+      summary: Xem ai đã đọc / chưa đọc (Manager)
+      description: |
+        FR-NEWS-06. Trả về hai danh sách để frontend dựng hai tab, kèm tỉ lệ "8/12 đã đọc".
+
+        **Lưu ý**: mẫu số là số nhân viên đang hoạt động **tại thời điểm gọi API** —
+        V1 không snapshot danh sách người nhận, nên tỉ lệ thay đổi nếu Manager thêm hoặc
+        khóa tài khoản sau khi đăng bài.
+      operationId: getNewsReads
+      responses:
+        "200":
+          description: Thống kê lượt đọc
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/NewsReadStats"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ==================================================================
+  # NOTIFICATIONS
+  # ==================================================================
+  /api/notifications:
+    get:
+      tags: [Notifications]
+      summary: Danh sách thông báo cá nhân
+      description: |
+        FR-NOTIF-01. Mới nhất trước. `unread_count` dùng cho badge trên icon chuông.
+
+        Điều hướng khi click dựa vào cặp `type` + `reference_id`; riêng `roster_published`
+        không trỏ tới một bản ghi cụ thể nên dùng `reference_date` (chính là `week_start`)
+        để mở đúng tuần trên Roster.
+      operationId: listNotifications
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+        - name: unread_only
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Danh sách thông báo
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, total, unread_count]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Notification"
+                  total:
+                    type: integer
+                    example: 47
+                  unread_count:
+                    type: integer
+                    example: 5
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/notifications/read-all:
+    put:
+      tags: [Notifications]
+      summary: Đánh dấu tất cả thông báo đã đọc
+      description: FR-NOTIF-02. Badge chuông về 0 sau khi gọi.
+      operationId: markAllNotificationsRead
+      responses:
+        "200":
+          description: Đã đánh dấu tất cả
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [updated_count]
+                    properties:
+                      updated_count:
+                        type: integer
+                        example: 5
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/notifications/{id}/read:
+    parameters:
+      - $ref: "#/components/parameters/IdPath"
+    put:
+      tags: [Notifications]
+      summary: Đánh dấu một thông báo đã đọc
+      description: FR-NOTIF-02. Chỉ đánh dấu được thông báo của chính mình.
+      operationId: markNotificationRead
+      responses:
+        "200":
+          description: Đã đánh dấu
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Notification"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Thông báo không thuộc về bạn
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+# ====================================================================
+# COMPONENTS
+# ====================================================================
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Access token lấy từ `POST /api/auth/login`, gửi kèm mọi request qua header
+        `Authorization: Bearer <token>`. Hết hạn sau 30 phút → dùng `POST /api/auth/refresh`.
+
+  parameters:
+    IdPath:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+      example: 1
+    Page:
+      name: page
+      in: query
+      description: Số trang, bắt đầu từ 1
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    Size:
+      name: size
+      in: query
+      description: Số bản ghi mỗi trang
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    WeekStart:
+      name: week_start
+      in: query
+      required: true
+      description: Ngày **Thứ 6** đầu tuần làm việc của rạp. Truyền ngày khác Thứ 6 sẽ nhận 400.
+      schema:
+        type: string
+        format: date
+      example: "2026-08-07"
+
+  responses:
+    Unauthorized:
+      description: Thiếu token, token sai hoặc đã hết hạn
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            detail: Không có quyền truy cập, vui lòng đăng nhập lại
+    Forbidden:
+      description: Token hợp lệ nhưng vai trò không đủ quyền
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            detail: Bạn không có quyền thực hiện thao tác này
+    NotFound:
+      description: Không tìm thấy tài nguyên
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            detail: Không tìm thấy dữ liệu
+    ValidationError:
+      description: Dữ liệu gửi lên sai định dạng (Pydantic tự sinh)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/HTTPValidationError"
+    ShiftConflict:
+      description: |
+        Vi phạm ràng buộc xếp ca (FR-ROSTER-07). Muốn ghi đè thì gửi lại
+        cùng request kèm `override_reason`.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [detail, conflicts]
+            properties:
+              detail:
+                type: string
+                example: Ca này vi phạm 2 ràng buộc
+              conflicts:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ShiftConflict"
+
+  schemas:
+    # ---------- Chung ----------
+    Error:
+      type: object
+      required: [detail]
+      properties:
+        detail:
+          type: string
+          description: Mô tả lỗi bằng tiếng Việt, hiển thị trực tiếp được cho người dùng
+          example: Không tìm thấy dữ liệu
+
+    HTTPValidationError:
+      type: object
+      properties:
+        detail:
+          type: array
+          items:
+            type: object
+            properties:
+              loc:
+                type: array
+                items:
+                  oneOf:
+                    - type: string
+                    - type: integer
+                example: [body, email]
+              msg:
+                type: string
+                example: value is not a valid email address
+              type:
+                type: string
+                example: value_error
+
+    MessageResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [message]
+          properties:
+            message:
+              type: string
+
+    # ---------- ENUM (khớp erd.md mục 4) ----------
+    UserRole:
+      type: string
+      enum: [manager, staff]
+      description: Vai trò người dùng
+    ShiftStatus:
+      type: string
+      enum: [draft, published]
+      description: |
+        Chỉ có hai trạng thái. "Open-shift" **không** nằm ở đây — nó là
+        `assigned_user_id = null`. Khóa khi trao đổi cũng không nằm ở đây — đó là `is_locked`.
+    AssignSource:
+      type: string
+      enum: [manual, auto, application, exchange]
+      description: |
+        Nguồn gán ca. `null` khi ca chưa có người. Reset Auto-Schedule chỉ gỡ các ca `auto`;
+        nhãn "Trao đổi ca" trên giao diện suy ra từ giá trị `exchange`.
+    ApplyStatus:
+      type: string
+      enum: [pending, approved, rejected, cancelled]
+    ExchangeStatus:
+      type: string
+      enum: [available_for_exchange, pending_approval, approved, rejected, cancelled]
+      description: |
+        `available_for_exchange` — đang mở, chờ người nhận ·
+        `pending_approval` — đã có người nhận, chờ Manager ·
+        `approved` / `rejected` — Manager đã xử lý ·
+        `cancelled` — người đăng tự hủy khi chưa ai nhận
+    NotificationType:
+      type: string
+      enum:
+        - roster_published
+        - shift_updated
+        - shift_deleted
+        - shift_applied
+        - shift_apply_approved
+        - shift_apply_rejected
+        - exchange_request
+        - exchange_approved
+        - exchange_rejected
+        - news_posted
+
+    # ---------- Auth & Users ----------
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: manager@galaxy.vn
+        password:
+          type: string
+          format: password
+          minLength: 8
+          example: GalaxyStaff@123
+
+    TokenPair:
+      type: object
+      required: [access_token, refresh_token, token_type, expires_in, user]
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        token_type:
+          type: string
+          example: bearer
+        expires_in:
+          type: integer
+          description: Số giây access token còn hiệu lực
+          example: 1800
+        user:
+          $ref: "#/components/schemas/User"
+
+    PasswordChangeRequest:
+      type: object
+      required: [current_password, new_password]
+      properties:
+        current_password:
+          type: string
+          format: password
+        new_password:
+          type: string
+          format: password
+          minLength: 8
+          description: Tối thiểu 8 ký tự
+          example: MatKhauMoi@2026
+
+    Location:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Galaxy Nguyễn Du
+        address:
+          type: string
+          nullable: true
+          example: 116 Nguyễn Du, Quận 1, TP.HCM
+
+    User:
+      type: object
+      required: [id, email, full_name, role, location, is_active, must_change_password, created_at]
+      properties:
+        id:
+          type: integer
+          example: 7
+        email:
+          type: string
+          format: email
+          example: an.nguyen@galaxy.vn
+        full_name:
+          type: string
+          example: Nguyễn Văn An
+        role:
+          $ref: "#/components/schemas/UserRole"
+        location:
+          $ref: "#/components/schemas/Location"
+        is_active:
+          type: boolean
+          example: true
+        must_change_password:
+          type: boolean
+          description: "`true` = đang dùng mật khẩu mặc định, frontend phải ép đổi trước khi vào Dashboard"
+          example: false
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-07-01T02:15:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: "`null` = chưa từng bị sửa"
+
+    UserDetail:
+      allOf:
+        - $ref: "#/components/schemas/User"
+        - type: object
+          description: Thông tin mở rộng cho màn hình chi tiết nhân viên (FR-AUTH-08)
+          properties:
+            current_week_hours:
+              type: number
+              format: float
+              description: Tổng giờ đã xếp trong tuần hiện tại
+              example: 32.5
+            passed_shift_count:
+              type: integer
+              description: Số ca đã pass thành công
+              example: 2
+
+    UserCreate:
+      type: object
+      required: [email, full_name, role, location_id]
+      properties:
+        email:
+          type: string
+          format: email
+          example: binh.tran@galaxy.vn
+        full_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Trần Thanh Bình
+        role:
+          $ref: "#/components/schemas/UserRole"
+        location_id:
+          type: integer
+          example: 1
+        password:
+          type: string
+          format: password
+          minLength: 8
+          nullable: true
+          description: Bỏ trống để dùng mật khẩu mặc định của hệ thống
+
+    UserUpdate:
+      type: object
+      description: Chỉ gửi trường cần đổi. Staff không được gửi `role` và `location_id`.
+      properties:
+        email:
+          type: string
+          format: email
+        full_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        role:
+          $ref: "#/components/schemas/UserRole"
+        location_id:
+          type: integer
+
+    # ---------- Availability ----------
+    AvailabilitySlot:
+      type: object
+      required: [day_of_week, start_time, end_time]
+      properties:
+        day_of_week:
+          type: integer
+          minimum: 0
+          maximum: 6
+          description: "**0 = Thứ 6**, 1 = Thứ 7, …, 6 = Thứ 5 (tuần rạp chạy T6 → T5)"
+          example: 0
+        start_time:
+          type: string
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+          description: Giờ bắt đầu rảnh, định dạng HH:mm
+          example: "18:00"
+        end_time:
+          type: string
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+          description: |
+            Giờ kết thúc, định dạng HH:mm. **Có thể nhỏ hơn `start_time`** khi khung giờ
+            vắt qua nửa đêm — ví dụ ca tối `18:00 → 02:00` là hợp lệ.
+          example: "02:00"
+
+    AvailabilityBatchRequest:
+      type: object
+      required: [week_start, slots]
+      properties:
+        week_start:
+          type: string
+          format: date
+          description: Bắt buộc là ngày Thứ 6
+          example: "2026-08-07"
+        slots:
+          type: array
+          description: Toàn bộ khung giờ rảnh của tuần. Mảng rỗng nghĩa là xóa hết bản đăng ký.
+          items:
+            $ref: "#/components/schemas/AvailabilitySlot"
+        reason:
+          type: string
+          nullable: true
+          maxLength: 500
+          description: Lý do khi đăng ký dưới 5 ngày (FR-AVAIL-07)
+          example: Tuần này em thi cuối kỳ
+
+    AvailabilitySubmission:
+      type: object
+      required: [id, user_id, week_start, total_days, slots, is_locked, submitted_at]
+      properties:
+        id:
+          type: integer
+          example: 15
+        user_id:
+          type: integer
+          example: 7
+        user_name:
+          type: string
+          example: Nguyễn Văn An
+        week_start:
+          type: string
+          format: date
+          example: "2026-08-07"
+        total_days:
+          type: integer
+          minimum: 0
+          maximum: 7
+          description: Số ngày có ít nhất một khung giờ rảnh, do server tự tính
+          example: 5
+        reason:
+          type: string
+          nullable: true
+        slots:
+          type: array
+          items:
+            $ref: "#/components/schemas/AvailabilitySlot"
+        is_locked:
+          type: boolean
+          description: Tính tại thời điểm gọi API, không lưu trong cơ sở dữ liệu
+          example: false
+        deadline_at:
+          type: string
+          format: date-time
+          description: Mốc 18h00 Thứ 7 quy về UTC, dùng cho countdown ở frontend
+          example: "2026-08-01T11:00:00Z"
+        submitted_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    OverlapView:
+      type: object
+      required: [week_start, total_staff, cells]
+      properties:
+        week_start:
+          type: string
+          format: date
+          example: "2026-08-07"
+        total_staff:
+          type: integer
+          description: Mẫu số để tính độ đậm màu của ô
+          example: 12
+        cells:
+          type: array
+          description: Chỉ chứa ô có ít nhất một người rảnh
+          items:
+            type: object
+            required: [day_of_week, slot_index, count, user_ids]
+            properties:
+              day_of_week:
+                type: integer
+                minimum: 0
+                maximum: 6
+                example: 0
+              slot_index:
+                type: integer
+                minimum: 0
+                maximum: 35
+                description: "0 = 08:00–08:30 … 35 = 01:30–02:00"
+                example: 20
+              count:
+                type: integer
+                example: 5
+              user_ids:
+                type: array
+                items:
+                  type: integer
+                example: [3, 7, 8, 11, 12]
+
+    AvailabilityStats:
+      type: object
+      required: [week_start, total_staff, submitted_count, deadline_at, items]
+      properties:
+        week_start:
+          type: string
+          format: date
+        total_staff:
+          type: integer
+          example: 12
+        submitted_count:
+          type: integer
+          description: Số người đã đăng ký (kể cả đăng ký thiếu ngày)
+          example: 8
+        deadline_at:
+          type: string
+          format: date-time
+        items:
+          type: array
+          items:
+            type: object
+            required: [user_id, full_name, status, total_days]
+            properties:
+              user_id:
+                type: integer
+              full_name:
+                type: string
+              status:
+                type: string
+                enum: [submitted, incomplete, missing]
+                description: "`submitted` ≥ 5 ngày · `incomplete` dưới 5 ngày · `missing` chưa đăng ký"
+              total_days:
+                type: integer
+                example: 3
+              reason:
+                type: string
+                nullable: true
+
+    # ---------- Shifts ----------
+    ShiftUserBrief:
+      type: object
+      required: [id, full_name]
+      properties:
+        id:
+          type: integer
+          example: 7
+        full_name:
+          type: string
+          example: Nguyễn Văn An
+
+    Shift:
+      type: object
+      required: [id, work_date, week_start, start_at, end_at, status, is_locked, duration_hours]
+      properties:
+        id:
+          type: integer
+          example: 128
+        location_id:
+          type: integer
+          example: 1
+        work_date:
+          type: string
+          format: date
+          description: |
+            **Ngày vận hành** của ca. Ca kết thúc lúc 02:00 vẫn thuộc ngày làm việc hôm trước,
+            nên trường này không suy ra được từ `start_at`.
+          example: "2026-08-07"
+        week_start:
+          type: string
+          format: date
+          example: "2026-08-07"
+        start_at:
+          type: string
+          format: date-time
+          description: UTC. Ví dụ 18:00 giờ rạp (UTC+7) tương ứng 11:00Z.
+          example: "2026-08-07T11:00:00Z"
+        end_at:
+          type: string
+          format: date-time
+          description: UTC, **luôn lớn hơn** `start_at`. Ví dụ 02:00 hôm sau tương ứng 19:00Z cùng ngày.
+          example: "2026-08-07T19:00:00Z"
+        duration_hours:
+          type: number
+          format: float
+          example: 8
+        assigned_user:
+          allOf:
+            - $ref: "#/components/schemas/ShiftUserBrief"
+          nullable: true
+          description: "`null` nghĩa là **Open-shift** — đây là cách duy nhất để nhận biết ca trống"
+        assignment_source:
+          allOf:
+            - $ref: "#/components/schemas/AssignSource"
+          nullable: true
+        assigned_at:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          $ref: "#/components/schemas/ShiftStatus"
+        is_locked:
+          type: boolean
+          description: "`true` khi ca đang có yêu cầu trao đổi hoặc đơn xin ca chờ duyệt → chặn sửa/xóa"
+          example: false
+        unassigned_reason:
+          type: string
+          nullable: true
+          description: Lý do thuật toán không gán được người
+          example: Không có nhân viên nào rảnh khung giờ này
+        override_reason:
+          type: string
+          nullable: true
+          description: Khác `null` nghĩa là Manager đã cố ý ghi đè cảnh báo xung đột
+        published_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    ShiftDetail:
+      allOf:
+        - $ref: "#/components/schemas/Shift"
+        - type: object
+          properties:
+            coworkers:
+              type: array
+              description: Đồng nghiệp có ca trùng khung giờ (FR-ROSTER-10)
+              items:
+                $ref: "#/components/schemas/ShiftUserBrief"
+            active_exchange_id:
+              type: integer
+              nullable: true
+              description: Id yêu cầu trao đổi đang hoạt động, nếu có
+            pending_application_count:
+              type: integer
+              description: Số đơn xin ca đang chờ duyệt
+              example: 0
+
+    ShiftCreate:
+      type: object
+      required: [work_date, start_at, end_at]
+      properties:
+        work_date:
+          type: string
+          format: date
+          example: "2026-08-07"
+        start_at:
+          type: string
+          format: date-time
+          example: "2026-08-07T11:00:00Z"
+        end_at:
+          type: string
+          format: date-time
+          example: "2026-08-07T19:00:00Z"
+        assigned_user_id:
+          type: integer
+          nullable: true
+          description: Bỏ trống hoặc `null` → tạo Open-shift
+          example: 7
+        location_id:
+          type: integer
+          default: 1
+        override_reason:
+          type: string
+          nullable: true
+          description: Bắt buộc khi muốn tạo ca dù đã nhận 409 vì vi phạm ràng buộc
+          example: Nhân viên đã đồng ý làm thêm qua điện thoại
+
+    ShiftUpdate:
+      type: object
+      description: Chỉ gửi trường cần đổi. Gửi `assigned_user_id = null` để chuyển ca về Open-shift.
+      properties:
+        start_at:
+          type: string
+          format: date-time
+        end_at:
+          type: string
+          format: date-time
+        assigned_user_id:
+          type: integer
+          nullable: true
+        override_reason:
+          type: string
+          nullable: true
+
+    ShiftConflict:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum:
+            - not_available
+            - overlapping_shift
+            - exceeds_weekly_hours
+            - insufficient_rest
+            - too_many_consecutive_days
+          description: |
+            `not_available` — nhân viên không đăng ký rảnh khung giờ này ·
+            `overlapping_shift` — chồng giờ với ca khác ·
+            `exceeds_weekly_hours` — vượt 48h/tuần (BR-RS-01) ·
+            `insufficient_rest` — nghỉ dưới 8h giữa hai ca (BR-RS-02) ·
+            `too_many_consecutive_days` — quá 6 ngày liên tiếp (BR-RS-03)
+        message:
+          type: string
+          example: "Nguyễn Văn An đã làm 46/48h tuần này"
+        related_shift_id:
+          type: integer
+          nullable: true
+
+    RosterSummary:
+      type: object
+      description: Số liệu tóm tắt cho thanh trạng thái phía trên Roster
+      properties:
+        total_hours:
+          type: number
+          format: float
+          description: Tổng giờ của người đang đăng nhập trong kỳ đang xem (FR-ROSTER-10)
+          example: 32
+        open_shift_count:
+          type: integer
+          example: 3
+        draft_count:
+          type: integer
+          example: 0
+
+    AutoScheduleResult:
+      type: object
+      required: [week_start, total_open_shifts, assigned_count, unassigned_count, coverage_rate, elapsed_ms]
+      properties:
+        week_start:
+          type: string
+          format: date
+        total_open_shifts:
+          type: integer
+          example: 25
+        assigned_count:
+          type: integer
+          example: 23
+        unassigned_count:
+          type: integer
+          example: 2
+        coverage_rate:
+          type: number
+          format: float
+          description: "`assigned_count / total_open_shifts`. Mục tiêu FR-ROSTER-06 là ≥ 0.9"
+          example: 0.92
+        elapsed_ms:
+          type: integer
+          description: Thời gian chạy thuật toán, dùng để đối chiếu mốc dưới 10 giây
+          example: 1840
+        assigned_shifts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Shift"
+        unassigned_shifts:
+          type: array
+          description: Ca vẫn trống, kèm `unassigned_reason` giải thích vì sao
+          items:
+            $ref: "#/components/schemas/Shift"
+        workload:
+          type: array
+          description: Tổng giờ mỗi nhân viên sau khi xếp, để Manager kiểm tra độ cân bằng
+          items:
+            type: object
+            properties:
+              user_id:
+                type: integer
+              full_name:
+                type: string
+              total_hours:
+                type: number
+                format: float
+                example: 38.5
+
+    # ---------- Shift Applications ----------
+    ShiftApplication:
+      type: object
+      required: [id, shift, user, status, has_conflict, created_at]
+      properties:
+        id:
+          type: integer
+          example: 9
+        shift:
+          $ref: "#/components/schemas/Shift"
+        user:
+          $ref: "#/components/schemas/ShiftUserBrief"
+        status:
+          $ref: "#/components/schemas/ApplyStatus"
+        has_conflict:
+          type: boolean
+          description: Đơn vẫn được nhận dù vi phạm ràng buộc — Manager là người quyết định cuối
+          example: true
+        conflict_note:
+          type: string
+          nullable: true
+          description: Snapshot mô tả vi phạm **tại thời điểm gửi đơn**
+          example: Nhân viên chưa đăng ký rảnh khung giờ này
+        reviewed_by:
+          allOf:
+            - $ref: "#/components/schemas/ShiftUserBrief"
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        reviewed_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    # ---------- Exchanges ----------
+    Exchange:
+      type: object
+      required: [id, shift, from_user, status, has_conflict, created_at]
+      properties:
+        id:
+          type: integer
+          example: 4
+        shift:
+          $ref: "#/components/schemas/Shift"
+        from_user:
+          allOf:
+            - $ref: "#/components/schemas/ShiftUserBrief"
+          description: Người đăng pass ca
+        to_user:
+          allOf:
+            - $ref: "#/components/schemas/ShiftUserBrief"
+          nullable: true
+          description: Người nhận ca, `null` khi chưa ai nhận
+        message:
+          type: string
+          nullable: true
+          description: Lời nhắn hiện trong popup chi tiết trên Exchange Board
+          example: Mình bận việc gia đình, ai nhận giúp với ạ
+        status:
+          $ref: "#/components/schemas/ExchangeStatus"
+        has_conflict:
+          type: boolean
+          example: false
+        conflict_note:
+          type: string
+          nullable: true
+          example: "Trùng giờ với ca ngày 15/08 (18:00-23:00)"
+        reviewed_by:
+          allOf:
+            - $ref: "#/components/schemas/ShiftUserBrief"
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        taken_at:
+          type: string
+          format: date-time
+          nullable: true
+        reviewed_at:
+          type: string
+          format: date-time
+          nullable: true
+        cancelled_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    # ---------- News ----------
+    NewsImage:
+      type: object
+      required: [id, image_url, sort_order]
+      properties:
+        id:
+          type: integer
+        image_url:
+          type: string
+          example: /uploads/news/2026/08/a3f9c1d2.webp
+        sort_order:
+          type: integer
+          minimum: 0
+          maximum: 2
+
+    NewsPost:
+      type: object
+      required: [id, title, content, author, images, is_read, created_at]
+      properties:
+        id:
+          type: integer
+          example: 12
+        title:
+          type: string
+          maxLength: 200
+          example: Lịch chiếu phim tuần 07/08 và chương trình khuyến mãi
+        content:
+          type: string
+          example: Từ thứ 6 tuần này rạp áp dụng giá vé ưu đãi cho suất chiếu trước 12h...
+        author:
+          $ref: "#/components/schemas/ShiftUserBrief"
+        images:
+          type: array
+          maxItems: 3
+          items:
+            $ref: "#/components/schemas/NewsImage"
+        is_read:
+          type: boolean
+          description: Trạng thái đọc của **người đang đăng nhập**
+          example: false
+        read_count:
+          type: integer
+          description: Chỉ trả về cho Manager
+          example: 8
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Khác `null` → frontend hiện nhãn "Đã chỉnh sửa"
+
+    NewsPostCreate:
+      type: object
+      required: [title, content]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        content:
+          type: string
+          minLength: 1
+        image_urls:
+          type: array
+          maxItems: 3
+          description: URL lấy từ `POST /api/news/images`, theo đúng thứ tự muốn hiển thị
+          items:
+            type: string
+
+    NewsPostUpdate:
+      type: object
+      description: Chỉ gửi trường cần đổi. Gửi `image_urls` sẽ thay thế toàn bộ danh sách ảnh cũ.
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        content:
+          type: string
+          minLength: 1
+        image_urls:
+          type: array
+          maxItems: 3
+          items:
+            type: string
+
+    NewsReadStats:
+      type: object
+      required: [post_id, total_staff, read_count, read_by, unread_by]
+      properties:
+        post_id:
+          type: integer
+          example: 12
+        total_staff:
+          type: integer
+          example: 12
+        read_count:
+          type: integer
+          example: 8
+        read_by:
+          type: array
+          items:
+            type: object
+            required: [user_id, full_name, read_at]
+            properties:
+              user_id:
+                type: integer
+              full_name:
+                type: string
+              read_at:
+                type: string
+                format: date-time
+        unread_by:
+          type: array
+          items:
+            $ref: "#/components/schemas/ShiftUserBrief"
+
+    # ---------- Notifications ----------
+    Notification:
+      type: object
+      required: [id, type, message, is_read, created_at]
+      properties:
+        id:
+          type: integer
+          example: 231
+        type:
+          $ref: "#/components/schemas/NotificationType"
+        message:
+          type: string
+          maxLength: 255
+          example: "Nguyễn Văn An đã nhận ca ngày 15/08 (18:00–23:00). Chờ duyệt."
+        reference_id:
+          type: integer
+          nullable: true
+          description: |
+            Id của thực thể liên quan, ý nghĩa phụ thuộc `type` (đa hình, không phải khóa ngoại):
+            ca làm với `shift_*`, yêu cầu trao đổi với `exchange_*`, bài viết với `news_posted`.
+          example: 4
+        reference_date:
+          type: string
+          format: date
+          nullable: true
+          description: |
+            Chỉ dùng cho `roster_published` — chứa `week_start` để mở đúng tuần trên Roster,
+            vì publish là thao tác hàng loạt nên không trỏ được tới một bản ghi duy nhất.
+          example: "2026-08-07"
+        is_read:
+          type: boolean
+          example: false
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-08-05T09:14:03Z"
