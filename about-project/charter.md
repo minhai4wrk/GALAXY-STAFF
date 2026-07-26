@@ -18,8 +18,13 @@ Bản Tuyên bố Dự án
 | Tên dự án | Galaxy Staff – Hệ thống Quản lý Nhân sự Rạp Chiếu Phim |
 | Loại dự án | Đồ án môn học cấp đại học (Capstone / Course Project) |
 | Nền tảng | Web App duy nhất – Responsive Design (tương thích điện thoại trình duyệt) |
-| Ngày bắt đầu (dự kiến) | Tuần 1 – Tháng 6/2026 |
-| Ngày kết thúc (dự kiến) | Tuần 4 – Tháng 7/2026 (8 tuần) |
+| Ngày bắt đầu | 01/06/2026 |
+| **Hạn nộp** | **05/10/2026** |
+| Giai đoạn Phân tích & Thiết kế | 01/06 – 26/07/2026 (đã hoàn thành) |
+| Giai đoạn Thi công | 27/07 – 04/10/2026 (10 tuần, 7 sprint) |
+
+> Mốc 8 tuần trong bản charter đầu tiên đã được thay bằng hạn nộp chính thức **05/10/2026**.
+> Kế hoạch chi tiết theo tuần: [tracker.md](tracker.md) — đây là tài liệu chuẩn khi có xung đột.
 
 # **2\. Bối cảnh và Vấn đề cần giải quyết**
 
@@ -98,14 +103,20 @@ Trong môi trường vận hành của các rạp chiếu phim, việc quản l�
 
 # **6\. Timeline tổng quan**
 
-Dự án được triển khai trong 8 tuần (2 tháng), chia thành 4 giai đoạn chính:
+Dự án triển khai từ 01/06/2026 đến hạn nộp 05/10/2026, chia thành 8 giai đoạn:
 
-| \# | Giai đoạn | Thời gian | Sản phẩm đầu ra |
-| ----- | ----- | ----- | ----- |
-| 1 | Phân tích & Thiết kế | Tuần 1–2 | SRS, ERD, Wireframe, API Spec |
-| 2 | Phát triển cốt lõi (Sprint 1\) | Tuần 3–4 | Auth, Availability, News Feed |
-| 3 | Phát triển chính (Sprint 2\) | Tuần 5–6 | Roster \+ Auto-Scheduling, Shift Exchange |
-| 4 | Kiểm thử, Responsive & Nghiệm thu | Tuần 7–8 | Test Report, Docker, Demo, Báo cáo, Slide |
+| \# | Giai đoạn | Thời gian | Sản phẩm đầu ra | Trạng thái |
+| ----- | ----- | ----- | ----- | ----- |
+| 0 | Phân tích & Thiết kế | 01/06 – 26/07 | SRS (55 FR \+ 39 NFR), 14 UC, ERD 11 bảng, OpenAPI 45 endpoint, 22 sơ đồ UML | ✅ Xong |
+| 1 | Nền tảng | 27/07 – 02/08 | Models \+ Alembic \+ seed, scaffold FE, README, wireframe | — |
+| 2 | Auth \+ News Feed \+ Notification | 03/08 – 16/08 | 21 endpoint \+ UI \+ deploy slice live | — |
+| 3 | Availability | 17/08 – 30/08 | Grid kéo-thả, Overlap view, template-shift, deadline | — |
+| 4 | Roster \+ Auto-Scheduling | 31/08 – 13/09 | Xếp ca, thuật toán greedy, publish, apply open-shift | — |
+| 5 | Shift Exchange | 14/09 – 20/09 | Pass / nhận / duyệt \+ xử lý tranh chấp đồng thời | — |
+| 6 | Kiểm thử, Responsive & Deploy | 21/09 – 27/09 | Test report, 3 TC nghiệm thu, deploy hoàn chỉnh | — |
+| 7 | Báo cáo, Slide & Nộp | 28/09 – 04/10 | Báo cáo ≥ 50 trang, slide, Turnitin | — |
+
+Chi tiết từng task, Definition of Done và cut-list: [tracker.md](tracker.md).
 
 # **7\. Phân tích Rủi ro**
 

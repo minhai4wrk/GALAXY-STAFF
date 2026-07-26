@@ -69,7 +69,7 @@ Hướng dẫn Thực hiện Dự án
 | Tầng | Công nghệ | Lý do lựa chọn |
 | ----- | ----- | ----- |
 | Frontend – Web | React.js \+ TypeScript \+ Tailwind CSS | Hệ sinh thái lớn, Tailwind giúp responsive nhanh, drag-and-drop tốt. |
-| UI Components | shadcn/ui hoặc Ant Design | Bộ component sẵn responsive, tiết kiệm thời gian trong timeline 8 tuần. |
+| UI Components | shadcn/ui hoặc Ant Design | Bộ component sẵn responsive, tiết kiệm thời gian trong timeline gấp rút của đồ án. |
 | Backend | Python \+ FastAPI | Async-first, tự động sinh Swagger, hiệu năng cao, dễ học. |
 | Database | PostgreSQL | Ổn định, hỗ trợ constraint mạnh, tương thích SQLAlchemy ORM. |
 | Real-time Notify | WebSocket (FastAPI native) | Thông báo in-app tực thì, không cần FCM do chỉ có web. |
